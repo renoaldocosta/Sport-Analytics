@@ -1,0 +1,9 @@
+streamlit
+pandas
+jupyter
+streamlit_option_menu
+statsbombpy
+mplsoccer
+matplotlib
+plotly
+flagpy
