@@ -6,31 +6,125 @@ from app.Scripts.text_functions import mkd_text_divider, mkd_text, mkd_paragraph
 import flagpy as fp
 
 
+
+
 def year_filter(df):
+    if 'id_index_season_name' not in st.session_state:
+        st.session_state.id_index_season_name = 0
+        id_index_season_name = 0
+    else:
+        id_index_season_name = st.session_state.id_index_season_name
+    
     st.write("")
-    season_name = st.selectbox('Selecione a copa do mundo:', df['season_name'])
+    season_options = df['season_name'].unique()
+    id_index_season_name = valid_index(season_options, id_index_season_name)
+    season_name = st.selectbox('Selecione a copa do mundo:', season_options, key='season_name', index=id_index_season_name)
+    
+    id_index_season_name = list(season_options).index(season_name)
+    st.session_state.id_index_season_name = id_index_season_name
+    
     season_id = df[df['season_name'] == season_name].season_id.values[0]
     df = df[df['season_id'] == season_id]
-    
     return df, season_id
+
+
+def filter_events(events):
+    options_event_type = ["Todos"] + events['type'].unique().tolist()
+    event_type = st.selectbox(
+            "Selecione o tipo de evento", 
+            options_event_type,
+            key='event_type'
+        )
+    
+    if event_type == "Todos":
+        return events
+        
+    else:
+        return events[events['type'] == event_type]
+
+
+def filter_vision(visao, match_id, home_team, away_team):
+    events = get_events(match_id)
+    if visao == "Casa":
+        events = events[events['team'] == home_team]
+    elif visao == "Visitante":
+        events = events[events['team'] == away_team]
+    elif visao == "Geral":
+        pass
+    return events
+
+
+        
+
+
+
+
+def restart_session_state():
+    st.session_state.id_index_match_id = 0
+
+
+def valid_index(options, index):
+    pass
+    if len(options) < index:
+        return 0
+    else:
+        return index
+
+
+def match_filter(df, season_id, competition_id):
+    if 'id_index_match_id' not in st.session_state:
+        st.session_state.id_index_match_id = 0
+        id_index_match_id = 0
+    else:
+        id_index_match_id = st.session_state.id_index_match_id
+    
+    df_matches = load_matches(competition_id=competition_id[0], season_id=season_id)
+    options_match = df_matches['match_id'].unique()
+    
+    id_index_match_id = valid_index(options_match, id_index_match_id)
+    
+    # Add the 'key' parameter to store the selection in st.session_state
+    match_id = st.selectbox('Selecione o jogo:', options_match,
+                            format_func=lambda idx: get_match_label(df_matches, idx),
+                            key='match_id',
+                            index=id_index_match_id,
+                            on_change=restart_session_state)
+    
+    id_index_match_id = list(df_matches['match_id']).index(match_id)
+    st.session_state.id_index_match_id = id_index_match_id
+    
+    
+    df_matches = df_matches[df_matches['match_id'] == match_id]
+    return df_matches, match_id
+
 
 def get_match_label(matches, match_id):
     row = matches[matches['match_id'] == match_id].iloc[0]
     return f"{row['match_date']} - {row['home_team']} x {row['away_team']}"
 
-def match_filter(df, season_id, competition_id):
-    df_matches = sb.matches(competition_id=competition_id[0], season_id=season_id)
-    
-    match_id = st.selectbox('Selecione o jogo:', df_matches['match_id'], format_func=lambda idx: get_match_label(df_matches, idx))
-    df_matches = df_matches[df_matches['match_id'] == match_id]
-    return df_matches, match_id
+@st.cache_data
+def load_matches(competition_id, season_id):
+    return sb.matches(competition_id=competition_id, season_id=season_id)
 
+
+
+@st.cache_data
+def get_events(match_id):
+    events = sb.events(match_id=match_id, flatten_attrs=True)
+    return events
+
+@st.cache_data
+def load_data():
+    competitions = sb.competitions()
+    df = competitions[competitions['competition_name'] == 'FIFA World Cup']
+    competition_id = df['competition_id'].unique()
+    return df, competition_id
 
 def filter_season(df):
     with st.sidebar:
         st.subheader("Filtros")
         df, season_id = year_filter(df)
-    return df , season_id 
+    return df, season_id 
 
 def filter_match(df, season_id, competition_id):
     with st.sidebar:
@@ -38,11 +132,6 @@ def filter_match(df, season_id, competition_id):
     return df_matches, match_id
 
 
-def load_data():
-    competitions = sb.competitions()
-    df = competitions[competitions['competition_name'] == 'FIFA World Cup']
-    competition_id = df['competition_id'].unique()
-    return df, competition_id
 
 def country_mapping(country):# United States
     if country.strip() == 'England':
@@ -115,8 +204,10 @@ def run():
     
     
     
-    
-    referee = df_match[df_match['match_id'] == match_id]['referee'].values[0]
+    try:
+        referee = df_match[df_match['match_id'] == match_id]['referee'].values[0]
+    except:
+        referee = "Não informado"
     
     with st.container(border=True):
         st.title(f"{match['home_team']} x {match['away_team']}")
@@ -283,28 +374,8 @@ def run():
 
 
     #st.write(sb.matches(competition_id=43, season_id=season_id))
-def filter_events(events):
-    event_type = st.selectbox(
-            "Selecione o tipo de evento", 
-            ["Todos"]+events['type'].unique().tolist()  # Ordena os tipos de evento em ordem alfabética
-        )
-    if event_type == "Todos":
-        return events
-        
-    else:
-        return events[events['type'] == event_type]
-        
 
-def filter_vision(visao, match_id, home_team, away_team):
-    if visao == "Casa":
-        events = sb.events(match_id=match_id, flatten_attrs=True)
-        events = events[events['team'] == home_team]
-    elif visao == "Visitante":
-        events = sb.events(match_id=match_id, flatten_attrs=True)
-        events = events[events['team'] == away_team]
-    elif visao == "Geral":
-        events = sb.events(match_id=match_id, flatten_attrs=True)
-    return events
+
 
 
 

@@ -139,8 +139,13 @@ def list_pages_directory():
     except Exception as e:
         st.error(f"Erro ao listar diretório 'paginas': {e}")
 
+
+
+
+
 def run():
     load_css()
+    
     selected_page, pages = sidebar()
     #st.title(Project_name)
     if selected_page == "Introdução":
