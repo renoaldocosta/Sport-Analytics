@@ -10,6 +10,7 @@ import flagpy as fp
 
 def year_filter(df):
     if 'id_index_season_name' not in st.session_state:
+        st.session_state.clear()
         st.session_state.id_index_season_name = 0
         id_index_season_name = 0
     else:
@@ -18,7 +19,7 @@ def year_filter(df):
     st.write("")
     season_options = df['season_name'].unique()
     id_index_season_name = valid_index(season_options, id_index_season_name)
-    season_name = st.selectbox('Selecione a copa do mundo:', season_options, key='season_name', index=id_index_season_name)
+    season_name = st.selectbox('Selecione a copa do mundo:', season_options, key='season_name', index=id_index_season_name, on_change=restart_session_state('season_name'))
     
     id_index_season_name = list(season_options).index(season_name)
     st.session_state.id_index_season_name = id_index_season_name
@@ -29,18 +30,55 @@ def year_filter(df):
 
 
 def filter_events(events):
+    if 'id_index_event_type' not in st.session_state:
+        st.session_state.id_index_event_type = 0
+        id_index_event_type = 0
+    else:
+        id_index_event_type = st.session_state.id_index_event_type
+    
     options_event_type = ["Todos"] + events['type'].unique().tolist()
+    id_index_event_type = valid_index(options_event_type, id_index_event_type)
     event_type = st.selectbox(
             "Selecione o tipo de evento", 
             options_event_type,
-            key='event_type'
+            index=id_index_event_type,
         )
+    id_index_event_type = options_event_type.index(event_type)
+    st.session_state.id_index_event_type = id_index_event_type
     
     if event_type == "Todos":
         return events
         
     else:
         return events[events['type'] == event_type]
+
+def filter_players(events, todos=True):
+    if 'id_index_player' not in st.session_state:
+        st.session_state.id_index_player = 0
+        id_index_player = 0
+    else:
+        id_index_player = st.session_state.id_index_player
+    if todos:
+        options_player = ["Todos"] + events['player'].unique().tolist()
+    else:
+        options_player = events['player'].unique().tolist()
+    # remove nan values
+    options_player = [x for x in options_player if str(x) != 'nan']
+    id_index_player = valid_index(options_player, id_index_player)
+    player = st.selectbox(
+            "Selecione o jogador", 
+            options_player,
+            index=id_index_player,
+        )
+    
+    id_index_player = options_player.index(player)
+    st.session_state.id_index_player = id_index_player
+    
+    if player == "Todos":
+        return events
+        
+    else:
+        return events[events['player'] == player]
 
 
 def filter_vision(visao, match_id, home_team, away_team):
@@ -54,13 +92,22 @@ def filter_vision(visao, match_id, home_team, away_team):
     return events
 
 
-        
 
 
 
-
-def restart_session_state():
-    st.session_state.id_index_match_id = 0
+def restart_session_state(nivel):
+    if nivel == "event_type":
+        try:
+            del st.session_state.id_index_player
+        except:
+            pass
+    if nivel == "season_name":
+        try:
+            del st.session_state.id_index_match_id
+            del st.session_state.id_index_event_type
+            del st.session_state.id_index_player
+        except:
+            pass
 
 
 def valid_index(options, index):
@@ -87,8 +134,8 @@ def match_filter(df, season_id, competition_id):
     match_id = st.selectbox('Selecione o jogo:', options_match,
                             format_func=lambda idx: get_match_label(df_matches, idx),
                             key='match_id',
-                            index=id_index_match_id,
-                            on_change=restart_session_state)
+                            index=id_index_match_id
+                            )
     
     id_index_match_id = list(df_matches['match_id']).index(match_id)
     st.session_state.id_index_match_id = id_index_match_id
@@ -202,7 +249,27 @@ def run():
     away_team, away_score, away_flag = get_away_team_score_flag(df_match, match_id)
     home_team, home_score, home_flag = get_home_team_score_flag(df_match, match_id)
     
-    
+    # Selecionar colunas principais, como jogador, time, tipo de evento e métricas específicas de cada tipo
+    event_columns = [
+        'minute',          # Minuto do evento
+        'second',          # Segundo do evento
+        'team',            # Nome do time
+        'type',            # Tipo de evento (Pass, Shot, Duel, etc.)
+        'position',        # Posição do jogador no campo
+        'player',          # Nome do jogador
+        'pass_body_part',  # Parte do corpo usada para o passe (se for um passe)
+        'pass_recipient',  # Nome do jogador que recebeu o passe (se for um passe)
+        'pass_height',     # Altura do passe (se for um passe)
+        'pass_length',     # Comprimento do passe (se for um passe)
+        'pass_outcome',    # Resultado do passe (se for um passe)
+        'under_pressure',  # Se o jogador estava sob pressão
+        'location',        # Localização do evento no campo
+        'pass_end_location',  # Fim do passe (se for um passe)
+        'shot_outcome',    # Resultado do chute (se for um chute)
+        'shot_statsbomb_xg',  # xG do chute (se for um chute)
+        'shot_technique',  # Técnica do chute (se for um chute)
+        'duel_outcome',    # Resultado do duelo (se for um desarme)
+    ]
     
     try:
         referee = df_match[df_match['match_id'] == match_id]['referee'].values[0]
@@ -235,40 +302,80 @@ def run():
     # ========================== Escalação ==========================
     st.header("Informações e Detalhes")
     st.write("")
-    tab1, tab2, tab3 = st.tabs(["Estatísticas", "Detalhes da Partida", "Escalação"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Estatísticas da Partida", "Detalhes da Partida", "Escalação", "Detalhes do Jogador"])
     
     mkd_text("", level='subheader')
     home_lineup = sb.lineups(match_id=match_id)[home_team].sort_values('jersey_number')
     away_lineup = sb.lineups(match_id=match_id)[away_team].sort_values('jersey_number')
+    lineups = sb.lineups(match_id=match_id)
     
+    
+    #Substitutions = lineups[]
     # Tecnicos
     home_managers = df_match['home_managers'].values[0]
     away_managers = df_match['away_managers'].values[0]
     
+    with tab1:
+        with st.container(border=True):
+            col7 = st.columns([1,1,1])
+            with col7[1]:
+                vision_options = ["Casa", "Visitante"]
+                visao = st.radio("Selecionar jogador da seleção:", vision_options, horizontal=True, index=0, key='visao_player')
+                events = filter_vision(visao, match_id, home_team, away_team)
+                lineups, yellow_cards, red_cards = lineups_metrics(lineups, visao, home_lineup, away_lineup)
+                events = filter_players(events, todos=False)
+                events  = filter_events(events)
+            events = events[event_columns]
+            # Metricas passes
+            passes = events['type'].value_counts().get('Pass', 0)
+            passes_completos = passes - events['pass_outcome'].value_counts().get('Incomplete', 0)
+            
+            col6 = st.columns([1, 1, 1,1,1,1])
+            
+            with col6[0]:
+                st.metric("Passes", passes)
+            with col6[1]:
+                st.metric("Passes Sucedidos", passes_completos)
+            st.dataframe(events)
+            
+        
     
     with tab3:
         with st.container(border=True):
+            st.subheader("Técnicos")
+            col3 = st.columns([1,1])
+            with col3[0]:
+                st.markdown(f"<h3 style='color: green'>{home_team}</h3>", unsafe_allow_html=True)
+                st.markdown(f"<h5 >{home_managers}</h5>", unsafe_allow_html=True)
+            with col3[1]:
+                st.markdown(f"<h3 style='color: red'>{away_team}</h3>", unsafe_allow_html=True)
+                st.markdown(f"<h5 >{away_managers}</h5>", unsafe_allow_html=True)    
+            st.divider()
             st.subheader("Jogadores")
             #with st.expander("👥 Jogadores",expanded=True):
             col3 = st.columns([1,1])
             with col3[0]:
                 st.markdown(f"<h3 style='color: green'>{home_team} (Casa)</h3>", unsafe_allow_html=True)
-                for index, row in home_lineup.iterrows():
-                    # Formatar a string com número da camisa, nome, e o apelido (se existir)
-                    nickname = f" ({row['player_nickname']})" if row['player_nickname'] else ""
-                    df_home = f"{row['jersey_number']} - {row['player_name']}{nickname}"
-                    
-                    # Exibir o resultado no Streamlit
-                    st.write(df_home)
+                with st.container(border=True):
+                    for index, row in home_lineup.iterrows():
+                        # Formatar a string com número da camisa, nome, e o apelido (se existir)
+                        nickname = f" ({row['player_nickname']})" if row['player_nickname'] else ""
+                        df_home = f"{row['jersey_number']} - {row['player_name']}{nickname}"
+                        
+                        # Exibir o resultado no Streamlit
+                        st.write(df_home)
+                st.dataframe(home_lineup)
             with col3[1]:
                 st.markdown(f"<h3 style='color: red'>{away_team} (Visitante)</h3>", unsafe_allow_html=True)
-                for index, row in away_lineup.iterrows():
-                    # Formatar a string com número da camisa, nome, e o apelido (se existir)
-                    nickname = f" ({row['player_nickname']})" if row['player_nickname'] else ""
-                    df_away = f"{row['jersey_number']} - {row['player_name']}{nickname}"
-                    
-                    # Exibir o resultado no Streamlit
-                    st.write(df_away)
+                with st.container(border=True):
+                    for index, row in away_lineup.iterrows():
+                        # Formatar a string com número da camisa, nome, e o apelido (se existir)
+                        nickname = f" ({row['player_nickname']})" if row['player_nickname'] else ""
+                        df_away = f"{row['jersey_number']} - {row['player_name']}{nickname}"
+                        
+                        # Exibir o resultado no Streamlit
+                        st.write(df_away)
+                st.dataframe(away_lineup)
     with tab2:
         with st.container(border=True):
         # ========================== Detalhes da Partida ==========================
@@ -280,26 +387,22 @@ def run():
             # Group Stage
             st.write(f"**Fase:** {match['competition_stage']}")
             
-            st.subheader("Técnicos")
-            col3 = st.columns([1,1])
-            with col3[0]:
-                st.markdown(f"<h3 style='color: green'>{home_team}</h3>", unsafe_allow_html=True)
-                st.markdown(f"<h5 >{home_managers}</h5>", unsafe_allow_html=True)
-            with col3[1]:
-                st.markdown(f"<h3 style='color: red'>{away_team}</h3>", unsafe_allow_html=True)
-                st.markdown(f"<h5 >{away_managers}</h5>", unsafe_allow_html=True)    
-    with tab1:
+            
+    with tab4:
         with st.container(border=True):
-            st.subheader("Estatísticas")
+            
+            st.subheader("Métricas")
             col5 = st.columns([1, 1,1])
             with col5[1]:
                 visao = st.radio("", [f"Casa","Geral", "Visitante"], horizontal=True, index=1)
-            
+            # Processar os lineups
+            lineups, yellow_cards, red_cards = lineups_metrics(lineups, visao, home_lineup, away_lineup)
             events = filter_vision(visao, match_id, home_team, away_team)
             #col5 = 
             col4 = st.columns([1, 1, 1, 1,1,1])
             with col4[0]:
                 st.metric("Passes", events['type'].value_counts().get('Pass', 0))
+                st.metric("Cartão Amarelo", yellow_cards)
             with col4[4]:
                 shots = events['type'].value_counts().get('Shot', 0)
                 st.metric("Chutes a Gol", shots)
@@ -314,6 +417,7 @@ def run():
                 st.metric("Conversão(Gols)", f'{percent_score}%')
             with col4[1]:
                 st.metric("Faltas", events['type'].value_counts().get('Foul Committed', 0))
+                st.metric("Cartão Vermelho", red_cards)
             with col4[2]:
                 st.metric("Dribles", events['type'].value_counts().get('Dribble', 0))
             with col4[3]:  # Add an additional column for corner kicks
@@ -323,61 +427,100 @@ def run():
                 st.metric("Escanteios", corner)
 
 
-            # Selecionar colunas principais, como jogador, time, tipo de evento e métricas específicas de cada tipo
-            event_columns = [
-                'type',            # Tipo de evento (Pass, Shot, Duel, etc.)
-                'minute',          # Minuto do evento
-                'second',          # Segundo do evento
-                'team',            # Nome do time
-                'player',          # Nome do jogador
-                'location',        # Localização do evento no campo
-                'pass_end_location',  # Fim do passe (se for um passe)
-                'pass_length',     # Comprimento do passe (se for um passe)
-                'pass_outcome',    # Resultado do passe (se for um passe)
-                'shot_outcome',    # Resultado do chute (se for um chute)
-                'shot_statsbomb_xg',  # xG do chute (se for um chute)
-                'shot_technique',  # Técnica do chute (se for um chute)
-                'duel_outcome',    # Resultado do duelo (se for um desarme)
-            ]
+            
 
             # Filtrando apenas as colunas que estão disponíveis nos eventos
             events_filtered = events[event_columns].copy()
 
             # Exibindo o DataFrame no Streamlit
             st.write("")
-            st.subheader("Eventos")
+            st.subheader("Eventos da Partida")
             col6 = st.columns([1, 1, 1])
-            with col6[1]:
+            with col6[0]:
                 events_filtered = filter_events(events_filtered)
-            st.dataframe(events_filtered, hide_index = True)
+            with col6[1]:
+                players_filtered = filter_players(events_filtered)
+                
+            
+            st.dataframe(players_filtered, hide_index = True)
+            download_df(players_filtered)
 
-        # Exemplo de algumas métricas simples que podem ser calculadas a partir do DataFrame
-        total_passes = len(events[events['type'] == 'Pass'])
-        total_shots = len(events[events['type'] == 'Shot'])
-        total_tackles = len(events[(events['type'] == 'Duel') & (events['duel_type'] == 'Tackle')])
-
-        # Exibindo métricas relacionadas aos eventos
-        st.metric("Total de Passes", total_passes)
-        st.metric("Total de Finalizações", total_shots)
-        st.metric("Total de Desarmes", total_tackles)
-
-    
-
-        st.dataframe(events)
-
-    
-    #st.write(f"**Cidade:** {match['city']}")
-    #st.write(sb.lineups(match_id=match_id))
-    
-    st.dataframe(df)
-    st.dataframe(df_match)
 
 
     #st.write(sb.matches(competition_id=43, season_id=season_id))
+@st.cache_data
+def lineups_metrics(lineups, visao, home_lineup, away_lineup):
+    if "Casa" in visao:
+        lineups = process_lineup(home_lineup)
+        
+    elif "Visitante" in visao:
+        lineups = process_lineup(away_lineup)
+    elif visao == "Geral":
+        home_lineup = process_lineup(home_lineup)
+        away_lineup = process_lineup(away_lineup)
+        lineups = pd.concat([home_lineup, away_lineup])
+    try:
+        yellow_cards = lineups['card_0_card_type'].value_counts().get('Yellow Card', 0)
+    except:
+        yellow_cards = 0
+    try:
+        red_cards = lineups['card_0_card_type'].value_counts().get('Red Card', 0)
+    except:
+        red_cards = 0
+    
+    return lineups, yellow_cards, red_cards
+    
 
-
-
-
+def download_df(df):
+    col7 = st.columns([1, 1,1])
+    with col7[1]:
+        csv = df.to_csv(index=False)
+        st.download_button(label="Download CSV", data=csv, file_name='eventos.csv', mime='text/csv', use_container_width=True)
+    
 
 if __name__ == "__main__":
     run()
+
+
+def expand_column(df, column_name, prefix):
+    """
+    Expande uma coluna que contém dicionários ou listas de dicionários em múltiplas colunas.
+    
+    Args:
+        df (pd.DataFrame): DataFrame original.
+        column_name (str): Nome da coluna a ser expandida.
+        prefix (str): Prefixo para as novas colunas.
+        
+    Returns:
+        pd.DataFrame: DataFrame com a coluna expandida.
+    """
+    expanded_df = df[column_name].apply(pd.Series)
+    expanded_df.columns = [f'{prefix}_{col}' for col in expanded_df.columns]
+    return pd.concat([df.drop(column_name, axis=1), expanded_df], axis=1)
+
+def process_lineup(lineup_df):
+    """
+    Processa o DataFrame de lineup expandindo as colunas necessárias.
+    
+    Args:
+        lineup_df (pd.DataFrame): DataFrame de lineup da equipe.
+        
+    Returns:
+        pd.DataFrame: DataFrame processado com colunas expandidas.
+    """
+    # Expandir a coluna 'positions'
+    lineup_df = expand_column(lineup_df, 'positions', 'position')
+    
+    # Expandir 'position_0' e 'position_1' se existirem
+    for pos in ['position_0', 'position_1']:
+        if pos in lineup_df.columns:
+            lineup_df = expand_column(lineup_df, pos, pos)
+    
+    # Expandir a coluna 'cards'
+    lineup_df = expand_column(lineup_df, 'cards', 'card')
+    
+    # Expandir 'card_0' se existir
+    if 'card_0' in lineup_df.columns:
+        lineup_df = expand_column(lineup_df, 'card_0', 'card_0')
+    
+    return lineup_df
