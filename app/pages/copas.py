@@ -204,15 +204,15 @@ def run():
             with col5[1]:
                 visao = st.radio("", [f"Casa","Geral", "Visitante"], horizontal=True, index=1)
             
-            events = filter_events(visao, match_id, home_team, away_team)
+            events = filter_vision(visao, match_id, home_team, away_team)
             #col5 = 
             col4 = st.columns([1, 1, 1, 1,1,1])
             with col4[0]:
                 st.metric("Passes", events['type'].value_counts().get('Pass', 0))
-            with col4[1]:
+            with col4[4]:
                 shots = events['type'].value_counts().get('Shot', 0)
                 st.metric("Chutes a Gol", shots)
-            with col4[2]:
+            with col4[5]:
                 if visao == "Casa":
                     goals = home_score
                 if visao == "Visitante":
@@ -221,11 +221,11 @@ def run():
                     goals = home_score + away_score
                 percent_score = round((goals / shots) * 100,2)
                 st.metric("Conversão(Gols)", f'{percent_score}%')
-            with col4[3]:
+            with col4[1]:
                 st.metric("Faltas", events['type'].value_counts().get('Foul Committed', 0))
-            with col4[4]:
+            with col4[2]:
                 st.metric("Dribles", events['type'].value_counts().get('Dribble', 0))
-            with col4[5]:  # Add an additional column for corner kicks
+            with col4[3]:  # Add an additional column for corner kicks
                 corner_passes = events[(events['type'] == 'Pass') & (events['pass_type'] == 'Corner')]
                 corner_shots = events[(events['type'] == 'Shot') & (events['play_pattern'] == 'From Corner')]
                 corner = len(corner_passes) + len(corner_shots)
@@ -254,7 +254,10 @@ def run():
 
             # Exibindo o DataFrame no Streamlit
             st.write("")
-            st.header("Eventos")
+            st.subheader("Eventos")
+            col6 = st.columns([1, 1, 1])
+            with col6[1]:
+                events_filtered = filter_events(events_filtered)
             st.dataframe(events_filtered, hide_index = True)
 
         # Exemplo de algumas métricas simples que podem ser calculadas a partir do DataFrame
@@ -280,16 +283,26 @@ def run():
 
 
     #st.write(sb.matches(competition_id=43, season_id=season_id))
+def filter_events(events):
+    event_type = st.selectbox(
+            "Selecione o tipo de evento", 
+            ["Todos"]+events['type'].unique().tolist()  # Ordena os tipos de evento em ordem alfabética
+        )
+    if event_type == "Todos":
+        return events
+        
+    else:
+        return events[events['type'] == event_type]
+        
 
-
-def filter_events(visao, match_id, home_team, away_team):
+def filter_vision(visao, match_id, home_team, away_team):
     if visao == "Casa":
         events = sb.events(match_id=match_id, flatten_attrs=True)
         events = events[events['team'] == home_team]
     elif visao == "Visitante":
         events = sb.events(match_id=match_id, flatten_attrs=True)
         events = events[events['team'] == away_team]
-    else:
+    elif visao == "Geral":
         events = sb.events(match_id=match_id, flatten_attrs=True)
     return events
 
