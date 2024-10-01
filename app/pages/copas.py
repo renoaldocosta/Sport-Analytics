@@ -5,8 +5,51 @@ from datetime import datetime
 from app.Scripts.text_functions import mkd_text_divider, mkd_text, mkd_paragraph
 import flagpy as fp
 from mplsoccer import Pitch,Sbopen
+import time
 
 parser = Sbopen()
+
+
+def carregar_dados():
+    # Interface do Streamlit
+    st.title("Dashboard de Futebol - FIFA World Cup")
+
+    # Barra de Progresso
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    time.sleep(tempo_carregamento)
+
+    # Passo 1: Carregar Competitions
+    
+
+    # Passo 2: Selecionar Competição
+    selected_competition = st.selectbox('Selecione a Competição', competitions_df['competition_name'].unique())
+
+    # Passo 3: Selecionar Temporada
+    selected_season = st.selectbox('Selecione a Temporada', competitions_df['season_name'].unique())
+
+    # Obter competition_id e season_id baseados na seleção
+    selected_row = competitions_df[
+        (competitions_df['competition_name'] == selected_competition) &
+        (competitions_df['season_name'] == selected_season)
+    ]
+    selected_competition_id = selected_row['competition_id'].values[0]
+    selected_season_id = selected_row['season_id'].values[0]
+
+    # Passo 4: Carregar Matches
+    
+
+    # Passo 5: Selecionar Partida
+    selected_match = st.selectbox('Selecione a Partida', matches_df['match_date'].unique())
+    selected_match_id = matches_df[matches_df['match_date'] == selected_match]['match_id'].values[0]
+
+    # Passo 6: Carregar Eventos
+    
+
+    # Limpar a Barra de Progresso
+    
+    
+
 
 def match_data(match_id):
     return parser.event(match_id=match_id)[0]
@@ -37,8 +80,11 @@ def year_filter(df):
     st.write("")
     season_options = df['season_name'].unique()
     id_index_season_name = valid_index(season_options, id_index_season_name)
-    season_name = st.selectbox('Selecione a copa do mundo:', season_options, key='season_name', index=id_index_season_name, on_change=restart_session_state('season_name'))
+    # Carregar Matches com Spinner
     
+    season_name = st.selectbox('Selecione a copa do mundo:', season_options, key='season_name', index=id_index_season_name, on_change=restart_session_state('season_name'))
+        
+        
     id_index_season_name = list(season_options).index(season_name)
     st.session_state.id_index_season_name = id_index_season_name
     
@@ -221,11 +267,14 @@ def match_filter(df, season_id, competition_id):
     id_index_match_id = valid_index(options_match, id_index_match_id)
     
     # Add the 'key' parameter to store the selection in st.session_state
+    
+    
     match_id = st.selectbox('Selecione o jogo:', options_match,
                             format_func=lambda idx: get_match_label(df_matches, idx),
                             key='match_id',
                             index=id_index_match_id
                             )
+    
     
     id_index_match_id = list(df_matches['match_id']).index(match_id)
     st.session_state.id_index_match_id = id_index_match_id
@@ -300,6 +349,7 @@ def get_home_team_score_flag(df_match, match_id):
         except:
             return home_team, home_score, r'./app/data/Images/not_founded.png'
 
+
     
 def get_away_team_score_flag(df_match, match_id):
     away_team = df_match[df_match['match_id'] == match_id]['away_team'].values[0]
@@ -316,11 +366,25 @@ def get_away_team_score_flag(df_match, match_id):
         except:
             return away_team, away_score, r'./app/data/Images/not_founded.png'
 def run():
+    tempo_carregamento = 0.1
+    #carregar_dados()
     #st.title("Jogo da Copa do Mundo")
+    with st.sidebar:
+        with st.spinner('Processando. Por favor, aguarde...'):
+            time.sleep(2)
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+    status_text.text("Carregando competições...")
+    progress_bar.progress(33)    
+    time.sleep(tempo_carregamento)
+    
     df, competition_id = load_data()
     
     df, season_id = filter_season(df)
+    status_text.text("Carregando partidas...")
     df_match, match_id = filter_match(df, season_id, competition_id)
+    progress_bar.progress(66)
+    time.sleep(tempo_carregamento)
     
 #    st.dataframe(df['country_name'].unique())
     
@@ -413,7 +477,14 @@ def run():
             with col7[1]:
                 vision_options = ["Casa", "Visitante"]
                 visao = st.radio("Selecionar jogador da seleção:", vision_options, horizontal=True, index=0, key='visao_player')
+                status_text.text("Carregando eventos da partida...")
                 events = filter_vision(visao, match_id, home_team, away_team)
+                progress_bar.progress(100)
+                time.sleep(tempo_carregamento*1.6)
+                progress_bar.empty()
+                status_text.text("")
+                
+                
                 lineups, yellow_cards, red_cards = lineups_metrics(lineups, visao, home_lineup, away_lineup)
                 events, player = filter_players(events, todos=False)
                 position = events['position'].value_counts().idxmax()
@@ -426,8 +497,9 @@ def run():
             
             percent_passes = percent(passes_completos, passes)
             percent_score = percent(gols, chutes_a_gol)
-            
-            
+
+                
+                
             st.write(f"")
             position = translate_position(position)
             jersey_number = lineups[lineups['player_name'] == player]['jersey_number'].values[0]
@@ -567,6 +639,7 @@ def run():
             
             st.dataframe(players_filtered, hide_index = True)
             download_df(players_filtered)
+
 
 
 def translate_position(position):

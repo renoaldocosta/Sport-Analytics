@@ -21,9 +21,9 @@ def load_css():
     css = """
         <style>
         /* Ocultar o menu principal do Streamlit */
-        /*#MainMenu {visibility: hidden;} 
+        #MainMenu {visibility: hidden;} 
         /* Ocultar o cabeçalho inteiro */
-        /*header {visibility: hidden;} 
+        header {visibility: hidden;} 
         
         /* Define a cor de fundo da sidebar */
         .css-1d391kg {background-color: #f0f2f6;}  /* secondaryBackgroundColor */
