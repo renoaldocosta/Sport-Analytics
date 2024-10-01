@@ -54,20 +54,55 @@ def carregar_dados():
 def match_data(match_id):
     return parser.event(match_id=match_id)[0]
 
-def plot_passes(match_id, player_name, type='Pass'):
+def plot_passes(match_data, player_name, event_type='Pass'):
+    # Filtrar os dados para o tipo de evento e jogador especificado
+    player_filter = (match_data['type_name'] == event_type) & (match_data['player_name'] == player_name)
+    df_events = match_data.loc[player_filter, ['x', 'y', 'end_x', 'end_y']].copy()
     
-    player_filter = (match_id.type_name == type) & (match_id.player_name == player_name)
-    df_pass = match_id.loc[player_filter, ['x', 'y', 'end_x', 'end_y']]
-    pitch = Pitch(pitch_color='#aabb97', line_color='white',
-              stripe_color='#c2d59d', stripe=False)  # optional stripes
+    # Substituir strings vazias por NaN
+    df_events[['end_x', 'end_y']] = df_events[['end_x', 'end_y']].replace('', pd.NA)
     
-    fig, ax = pitch.grid(grid_height=0.9, title_height=0.06, axis=False, endnote_height=0.04, 
-                         title_space=0, endnote_space=0)
-    pitch.arrows(df_pass.x, df_pass.y, df_pass.end_x, df_pass.end_y, color='white', ax=ax['pitch'])
+    # Converter para float (se necessário)
+    df_events[['x', 'y', 'end_x', 'end_y']] = df_events[['x', 'y', 'end_x', 'end_y']].astype(float)
+    # soma os valores da linha 0
+    try:
+        soma_linha_zero = df_events.iloc[0].sum()
+    except:
+        soma_linha_zero = 0
+    # Separar eventos com e sem end_x/end_y
+    df_valid = df_events.dropna(subset=['end_x', 'end_y'])
+    df_invalid = df_events[df_events['end_x'].isna() | df_events['end_y'].isna()]
     
-    pitch.kdeplot(df_pass.x, df_pass.y, ax=ax['pitch'], alpha=0.5, shade=True, cmap='coolwarm')
+    # Configurar o campo
+    pitch = Pitch(pitch_type='statsbomb', pitch_color='#aabb97', line_color='white',
+                  stripe_color='#c2d59d', stripe=False)  # Ajuste conforme necessário
     
-    return fig
+    fig, ax = pitch.draw(figsize=(10, 7))
+    
+    # Plotar setas para eventos válidos
+    if not df_valid.empty:
+        pitch.arrows(df_valid['x'], df_valid['y'], df_valid['end_x'], df_valid['end_y'], 
+                    width=2, color='white', ax=ax)
+    
+    event_type_translated = translate_event(event_type)
+    # Plotar pontos para eventos inválidos
+    if not df_invalid.empty:
+        pitch.scatter(df_invalid['x'], df_invalid['y'], s=100, color='red', edgecolors='black', 
+                     alpha=0.7, ax=ax, label=event_type_translated)
+    
+    # Opcional: Adicionar mapa de calor para os eventos válidos
+    if not df_valid.empty:
+        try:
+            pitch.kdeplot(df_valid['x'], df_valid['y'], ax=ax, alpha=0.5, shade=True, cmap='coolwarm')
+        except Exception as e:
+            st.write("Não foi possível plotar o mapa de calor:", e)
+    
+    # Legenda (apenas se houver eventos inválidos)
+    if not df_invalid.empty:
+        ax.legend()
+    
+    return fig, soma_linha_zero
+
 
 def year_filter(df):
     if 'id_index_season_name' not in st.session_state:
@@ -206,8 +241,10 @@ def filter_players(events, todos=True):
             options_player,
             index=id_index_player,
         )
-    
-    id_index_player = options_player.index(player)
+    try:
+        id_index_player = options_player.index(player)
+    except:
+        pass
     st.session_state.id_index_player = id_index_player
     
     if player == "Todos":
@@ -371,7 +408,7 @@ def run():
     #st.title("Jogo da Copa do Mundo")
     with st.sidebar:
         with st.spinner('Processando. Por favor, aguarde...'):
-            time.sleep(2)
+            time.sleep(1)
             progress_bar = st.progress(0)
             status_text = st.empty()
     status_text.text("Carregando competições...")
@@ -528,11 +565,22 @@ def run():
             col8 = st.columns([1,2,1])
             with col8[1]:
                 final_data = match_data(match_id)
-                fig = plot_passes(final_data, player, event_type)
+                fig,soma_linha_zero = plot_passes(final_data, player, event_type)
                 event_type = translate_event(event_type)
-                st.subheader(f"Mapa: {event_type}")
-                st.pyplot(fig)
-            st.dataframe(events)
+                if soma_linha_zero != 0:
+                    st.subheader(f"Mapa: {event_type}")
+                    st.pyplot(fig)
+            st.subheader(f"Detalhamento do evento de {event_type}")
+            #st.dataframe(events.columns)
+            events_to_show = events.reset_index(drop=True)
+            events_to_show.index = events_to_show.index + 1
+            st.dataframe(events_to_show)
+            
+            parser = Sbopen()
+            def match_data_2(match_id):
+                return parser.event(match_id=match_id)[0]
+            #st.dataframe(match_data_2(match_id).columns)
+            #st.dataframe(match_data_2(match_id))
         
     
     with tab3:
@@ -632,9 +680,9 @@ def run():
             st.subheader("Eventos da Partida")
             col6 = st.columns([1, 1, 1])
             with col6[0]:
-                events_filtered, event_type = filter_events(events_filtered)
+                events_filtered, event_type = filter_events(events_filtered, todos=False)
             with col6[1]:
-                players_filtered, player = filter_players(events_filtered)
+                players_filtered, player = filter_players(events_filtered, todos=False)
                 
             
             st.dataframe(players_filtered, hide_index = True)
