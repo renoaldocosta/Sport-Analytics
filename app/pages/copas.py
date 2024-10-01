@@ -4,9 +4,27 @@ import pandas as pd
 from datetime import datetime
 from app.Scripts.text_functions import mkd_text_divider, mkd_text, mkd_paragraph
 import flagpy as fp
+from mplsoccer import Pitch,Sbopen
 
+parser = Sbopen()
 
+def match_data(match_id):
+    return parser.event(match_id=match_id)[0]
 
+def plot_passes(match_id, player_name, type='Pass'):
+    
+    player_filter = (match_id.type_name == type) & (match_id.player_name == player_name)
+    df_pass = match_id.loc[player_filter, ['x', 'y', 'end_x', 'end_y']]
+    pitch = Pitch(pitch_color='#aabb97', line_color='white',
+              stripe_color='#c2d59d', stripe=False)  # optional stripes
+    
+    fig, ax = pitch.grid(grid_height=0.9, title_height=0.06, axis=False, endnote_height=0.04, 
+                         title_space=0, endnote_space=0)
+    pitch.arrows(df_pass.x, df_pass.y, df_pass.end_x, df_pass.end_y, color='white', ax=ax['pitch'])
+    
+    pitch.kdeplot(df_pass.x, df_pass.y, ax=ax['pitch'], alpha=0.5, shade=True, cmap='coolwarm')
+    
+    return fig
 
 def year_filter(df):
     if 'id_index_season_name' not in st.session_state:
@@ -47,10 +65,10 @@ def filter_events(events):
     st.session_state.id_index_event_type = id_index_event_type
     
     if event_type == "Todos":
-        return events
+        return events, event_type
         
     else:
-        return events[events['type'] == event_type]
+        return events[events['type'] == event_type], event_type
 
 def filter_players(events, todos=True):
     if 'id_index_player' not in st.session_state:
@@ -75,10 +93,10 @@ def filter_players(events, todos=True):
     st.session_state.id_index_player = id_index_player
     
     if player == "Todos":
-        return events
+        return events, player
         
     else:
-        return events[events['player'] == player]
+        return events[events['player'] == player], player
 
 
 def filter_vision(visao, match_id, home_team, away_team):
@@ -323,12 +341,28 @@ def run():
                 visao = st.radio("Selecionar jogador da seleção:", vision_options, horizontal=True, index=0, key='visao_player')
                 events = filter_vision(visao, match_id, home_team, away_team)
                 lineups, yellow_cards, red_cards = lineups_metrics(lineups, visao, home_lineup, away_lineup)
-                events = filter_players(events, todos=False)
-                events  = filter_events(events)
+                events, player = filter_players(events, todos=False)
+                position = events['position'].value_counts().idxmax()
+                events, event_type  = filter_events(events)
             events = events[event_columns]
             # Metricas passes
             passes = events['type'].value_counts().get('Pass', 0)
             passes_completos = passes - events['pass_outcome'].value_counts().get('Incomplete', 0)
+            chutes_a_gol = events['type'].value_counts().get('Shot', 0)
+            gols = events['shot_outcome'].value_counts().get('Goal', 0)
+            
+            percent_passes = percent(passes_completos, passes)
+            percent_score = percent(gols, chutes_a_gol)
+            
+            
+            col8 = st.columns([1,2,1])
+            with col8[1]:
+                final_data = match_data(match_id)
+                fig = plot_passes(final_data, player, event_type)
+                st.subheader(f"Mapa ({event_type})")
+                st.pyplot(fig)
+            
+            st.subheader(f"{player} - ({position})")
             
             col6 = st.columns([1, 1, 1,1,1,1])
             
@@ -336,6 +370,14 @@ def run():
                 st.metric("Passes", passes)
             with col6[1]:
                 st.metric("Passes Sucedidos", passes_completos)
+            with col6[2]:
+                st.metric("Precisão de Passe", f'{percent_passes}%')
+            with col6[3]:
+                st.metric("Chutes a Gol", chutes_a_gol)
+            with col6[4]:
+                st.metric("Gols", gols)
+            with col6[5]:
+                st.metric("Conversão(Gols)", f'{percent_score}%')
             st.dataframe(events)
             
         
@@ -437,15 +479,19 @@ def run():
             st.subheader("Eventos da Partida")
             col6 = st.columns([1, 1, 1])
             with col6[0]:
-                events_filtered = filter_events(events_filtered)
+                events_filtered, event_type = filter_events(events_filtered)
             with col6[1]:
-                players_filtered = filter_players(events_filtered)
+                players_filtered, player = filter_players(events_filtered)
                 
             
             st.dataframe(players_filtered, hide_index = True)
             download_df(players_filtered)
 
-
+def percent(value, total):
+    if total == 0:
+        return 0
+    else:
+        return round((value / total) * 100,2)
 
     #st.write(sb.matches(competition_id=43, season_id=season_id))
 @st.cache_data
