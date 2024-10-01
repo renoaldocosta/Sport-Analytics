@@ -46,15 +46,87 @@ def year_filter(df):
     df = df[df['season_id'] == season_id]
     return df, season_id
 
+def translate_event(event_type):
+    event_translation = {
+    'Pass': 'Passe ',
+    'Ball Receipt*': 'Recepção de Bola',
+    'Carry': 'Condução de Bola',
+    'Pressure': 'Pressão (Marcação)',
+    'Foul Committed': 'Falta Cometida',
+    'Duel': 'Duelo (Disputa)',
+    'Block': 'Bloqueio',
+    'Ball Recovery': 'Recuperação de Bola',
+    'Miscontrol': 'Controle Errado',
+    'Dribbled Past': 'Driblado',
+    
+    'Shot': 'Chute a Gol',
+    'Substitution': 'Substituição',
+    'Clearance': 'Alívio (Desarme)',
+    'Foul Won': 'Falta Sofrida',
+    'Injury Stoppage': 'Parada por Lesão',
+    'Interception': 'Interceptação ',
+    'Dribble': 'Drible',
+}
 
-def filter_events(events):
+    return event_translation.get(event_type, event_type)
+
+def filter_events(events, todos=True):
     if 'id_index_event_type' not in st.session_state:
         st.session_state.id_index_event_type = 0
         id_index_event_type = 0
     else:
         id_index_event_type = st.session_state.id_index_event_type
     
-    options_event_type = ["Todos"] + events['type'].unique().tolist()
+    # Adicionar "Todos" à lista de opções, se necessário
+    if todos:
+        options_event_type = ["Todos"] + events['type'].unique().tolist()
+    else:
+        options_event_type = events['type'].unique().tolist()
+
+    if todos:
+        # Traduzir os eventos para exibição no selectbox
+        translated_options_event_type = ["Todos"] + [translate_event(event) for event in events['type'].unique().tolist()]
+
+        id_index_event_type = valid_index(translated_options_event_type, id_index_event_type)
+    else:
+        # Traduzir os eventos para exibição no selectbox
+        translated_options_event_type = [translate_event(event) for event in events['type'].unique().tolist()]
+
+        id_index_event_type = valid_index(translated_options_event_type, id_index_event_type)
+
+    # Exibir os eventos traduzidos no selectbox
+    event_type_translated = st.selectbox(
+        "Selecione o tipo de evento", 
+        translated_options_event_type,
+        index=id_index_event_type,
+    )
+
+    # Encontrar o índice do evento traduzido na lista original
+    if event_type_translated == "Todos":
+        event_type = "Todos"
+    else:
+        event_type = options_event_type[translated_options_event_type.index(event_type_translated)]
+    
+    id_index_event_type = translated_options_event_type.index(event_type_translated)
+    st.session_state.id_index_event_type = id_index_event_type
+    
+    # Filtrar eventos, se necessário
+    if event_type == "Todos":
+        return events, event_type
+    else:
+        return events[events['type'] == event_type], event_type
+
+
+def filter_events_2(events, todos=True):
+    if 'id_index_event_type' not in st.session_state:
+        st.session_state.id_index_event_type = 0
+        id_index_event_type = 0
+    else:
+        id_index_event_type = st.session_state.id_index_event_type
+    if todos:
+        options_event_type = ["Todos"] + events['type'].unique().tolist()
+    else:
+        options_event_type = events['type'].unique().tolist()
     id_index_event_type = valid_index(options_event_type, id_index_event_type)
     event_type = st.selectbox(
             "Selecione o tipo de evento", 
@@ -289,6 +361,8 @@ def run():
         'duel_outcome',    # Resultado do duelo (se for um desarme)
     ]
     
+
+    
     try:
         referee = df_match[df_match['match_id'] == match_id]['referee'].values[0]
     except:
@@ -343,7 +417,6 @@ def run():
                 lineups, yellow_cards, red_cards = lineups_metrics(lineups, visao, home_lineup, away_lineup)
                 events, player = filter_players(events, todos=False)
                 position = events['position'].value_counts().idxmax()
-                events, event_type  = filter_events(events)
             events = events[event_columns]
             # Metricas passes
             passes = events['type'].value_counts().get('Pass', 0)
@@ -355,17 +428,13 @@ def run():
             percent_score = percent(gols, chutes_a_gol)
             
             
-            col8 = st.columns([1,2,1])
-            with col8[1]:
-                final_data = match_data(match_id)
-                fig = plot_passes(final_data, player, event_type)
-                st.subheader(f"Mapa ({event_type})")
-                st.pyplot(fig)
-            
-            st.subheader(f"{player} - ({position})")
+            st.write(f"")
+            position = translate_position(position)
+            jersey_number = lineups[lineups['player_name'] == player]['jersey_number'].values[0]
+            st.subheader(f"Posição: {position} | Camisa: {jersey_number}")
+            st.write(f"")
             
             col6 = st.columns([1, 1, 1,1,1,1])
-            
             with col6[0]:
                 st.metric("Passes", passes)
             with col6[1]:
@@ -378,8 +447,20 @@ def run():
                 st.metric("Gols", gols)
             with col6[5]:
                 st.metric("Conversão(Gols)", f'{percent_score}%')
-            st.dataframe(events)
             
+            st.write('')
+            st.divider()
+            st.subheader('Eventos do jogador')
+            
+            events, event_type  = filter_events(events, todos=False)
+            col8 = st.columns([1,2,1])
+            with col8[1]:
+                final_data = match_data(match_id)
+                fig = plot_passes(final_data, player, event_type)
+                event_type = translate_event(event_type)
+                st.subheader(f"Mapa: {event_type}")
+                st.pyplot(fig)
+            st.dataframe(events)
         
     
     with tab3:
@@ -486,6 +567,28 @@ def run():
             
             st.dataframe(players_filtered, hide_index = True)
             download_df(players_filtered)
+
+
+def translate_position(position):
+    # Dicionário para mapear posições de futebol em inglês para português
+    position_translation = {
+        'Right Wing Back': 'Ala Direito',
+        'Right Defensive Midfield': 'Volante Direito',
+        'Right Center Back': 'Zagueiro Direito',
+        'Left Defensive Midfield': 'Volante Esquerdo',
+        'Left Wing Back': 'Ala Esquerdo',
+        'Left Center Back': 'Zagueiro Esquerdo',
+        'Center Back': 'Zagueiro Central',
+        'Goalkeeper': 'Goleiro',
+        'Center Attacking Midfield': 'Meia Ofensivo Central',
+        'Left Center Forward': 'Atacante Esquerdo',
+        'Right Center Forward': 'Atacante Direito',
+        'Substitute': 'Substituto',
+        'Center Forward': 'Atacante Central',
+        'nan': 'Indefinido'  # Para lidar com valores NaN
+    }
+    return position_translation.get(position, position)
+
 
 def percent(value, total):
     if total == 0:
