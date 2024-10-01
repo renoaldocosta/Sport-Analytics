@@ -54,6 +54,70 @@ def carregar_dados():
 def match_data(match_id):
     return parser.event(match_id=match_id)[0]
 
+@st.cache_data
+def plot_passes_without_filter_player(match_data, event_type='Pass', arrows = True, heat_map=False, visao='Geral', home_team='', away_team=''):
+    # Filtrar os dados para o tipo de evento e jogador especificado
+    if visao == "Casa":
+        team_name = home_team
+    elif visao == "Visitante":
+        team_name = away_team
+    else:
+        team_name = ''
+    
+    if team_name:
+        teams_filter = (match_data['type_name'] == event_type) & (match_data['team_name'] == team_name)
+    else:
+        teams_filter = match_data['type_name'] == event_type
+        
+    df_events = match_data.loc[teams_filter, ['x', 'y', 'end_x', 'end_y']].copy()
+    
+    # Substituir strings vazias por NaN
+    df_events[['end_x', 'end_y']] = df_events[['end_x', 'end_y']].replace('', pd.NA)
+    
+    # Converter para float (se necessário)
+    df_events[['x', 'y', 'end_x', 'end_y']] = df_events[['x', 'y', 'end_x', 'end_y']].astype(float)
+    # soma os valores da linha 0
+    try:
+        soma_linha_zero = df_events.iloc[0].sum()
+    except:
+        soma_linha_zero = 0
+    # Separar eventos com e sem end_x/end_y
+    df_valid = df_events.dropna(subset=['end_x', 'end_y'])
+    df_invalid = df_events[df_events['end_x'].isna() | df_events['end_y'].isna()]
+    
+    # Configurar o campo
+    pitch = Pitch(pitch_type='statsbomb', pitch_color='#aabb97', line_color='white',
+                  stripe_color='#c2d59d', stripe=False)  # Ajuste conforme necessário
+    
+    fig, ax = pitch.draw(figsize=(10, 7))
+    
+    if arrows:
+        # Plotar setas para eventos válidos
+        if not df_valid.empty:
+            pitch.arrows(df_valid['x'], df_valid['y'], df_valid['end_x'], df_valid['end_y'], 
+                        width=2, color='white', ax=ax)
+    
+    event_type_translated = translate_event(event_type)
+    # Plotar pontos para eventos inválidos
+    if not df_invalid.empty:
+        pitch.scatter(df_invalid['x'], df_invalid['y'], s=100, color='red', edgecolors='black', 
+                     alpha=0.7, ax=ax, label=event_type_translated)
+    
+    if heat_map:
+        # Opcional: Adicionar mapa de calor para os eventos válidos
+        if not df_valid.empty:
+            try:
+                pitch.kdeplot(df_valid['x'], df_valid['y'], ax=ax, alpha=0.5, shade=True, cmap='coolwarm')
+            except Exception as e:
+                st.write("Não foi possível plotar o mapa de calor:", e)
+    
+    # Legenda (apenas se houver eventos inválidos)
+    if not df_invalid.empty:
+        ax.legend()
+    
+    return fig, soma_linha_zero
+
+
 def plot_passes(match_data, player_name, event_type='Pass'):
     # Filtrar os dados para o tipo de evento e jogador especificado
     player_filter = (match_data['type_name'] == event_type) & (match_data['player_name'] == player_name)
@@ -508,7 +572,7 @@ def run():
     home_managers = df_match['home_managers'].values[0]
     away_managers = df_match['away_managers'].values[0]
     
-    with tab1:
+    with tab4:
         with st.container(border=True):
             col7 = st.columns([1,1,1])
             with col7[1]:
@@ -607,7 +671,7 @@ def run():
                         
                         # Exibir o resultado no Streamlit
                         st.write(df_home)
-                st.dataframe(home_lineup)
+                #st.dataframe(home_lineup)
             with col3[1]:
                 st.markdown(f"<h3 style='color: red'>{away_team} (Visitante)</h3>", unsafe_allow_html=True)
                 with st.container(border=True):
@@ -618,7 +682,7 @@ def run():
                         
                         # Exibir o resultado no Streamlit
                         st.write(df_away)
-                st.dataframe(away_lineup)
+                #st.dataframe(away_lineup)
     with tab2:
         with st.container(border=True):
         # ========================== Detalhes da Partida ==========================
@@ -631,7 +695,7 @@ def run():
             st.write(f"**Fase:** {match['competition_stage']}")
             
             
-    with tab4:
+    with tab1:
         with st.container(border=True):
             
             st.subheader("Métricas")
@@ -668,8 +732,118 @@ def run():
                 corner_shots = events[(events['type'] == 'Shot') & (events['play_pattern'] == 'From Corner')]
                 corner = len(corner_passes) + len(corner_shots)
                 st.metric("Escanteios", corner)
+            
+            final_data = match_data(match_id)
+            
+            col11 = st.columns([1,2,1])
+            with col11[1]:
+                st.divider()
+                plot_heat_arraw_map = st.checkbox("Mostrar Gráfico de Passes e Chutes ao Gol", value=False, key='pass_chart')
+                
+            if plot_heat_arraw_map:
+                load_time_plot = 0.01
+                # Interface aprimorada com barra de progresso e status para os dois eventos
+                col9 = st.columns([1, 1])
 
+                # ---- Seção para o evento de tipo 'Pass' ----
+                with col9[0]:
+                    with st.spinner('Processando. Por favor, aguarde...'):
+                        # Barra de progresso e status
+                        progress_bar_col9 = st.progress(0)
+                        status_text_col9 = st.empty()
 
+                        time.sleep(load_time_plot)  # Simulação de um pequeno tempo de processamento
+                        progress_bar_col9.progress(20)
+                        status_text_col9.text("Inicializando...")
+
+                        # Configuração de opções para o gráfico de Pass
+                        event_type = 'Pass'
+                        event_type_translated = translate_event(event_type)
+                        st.subheader(f"Mapa: {event_type_translated}")
+                        
+                        col10 = st.columns([1, 1])
+                        with col10[0]:
+                            arrows = st.checkbox("Mostrar Setas", value=False, key='arrows1')
+                        with col10[1]:
+                            heat_map = st.checkbox("Mostrar Mapa de Calor", value=True, key='heat_map1')
+
+                        # Atualizando progresso após a escolha das opções
+                        time.sleep(load_time_plot)  # Simulação de tempo para configuração
+                        progress_bar_col9.progress(40)
+                        status_text_col9.text("Configurando opções...")
+
+                        # Plotagem do gráfico de Pass
+                        fig, soma_linha_zero = plot_passes_without_filter_player(final_data, event_type, arrows=arrows, heat_map=heat_map, visao=visao, home_team=home_team, away_team=away_team)
+
+                        # Atualizando progresso após a plotagem
+                        progress_bar_col9.progress(80)
+                        status_text_col9.text("Gerando gráfico...")
+
+                        # Exibir o gráfico se houver dados
+                        if soma_linha_zero != 0:
+                            st.pyplot(fig)
+                            progress_bar_col9.progress(100)
+                            status_text_col9.text("Plotagem concluída!")
+                        else:
+                            st.warning("Nenhum dado disponível para plotagem.")
+
+                        # Limpar a barra de progresso e a mensagem de status após um breve tempo
+                        time.sleep(load_time_plot)
+                        progress_bar_col9.empty()
+                        status_text_col9.empty()
+
+                # ---- Seção para o evento de tipo 'Shot' ----
+                with col9[1]:
+                    with st.spinner('Processando. Por favor, aguarde...'):
+                        # Barra de progresso e status
+                        progress_bar_col9_shot = st.progress(0)
+                        status_text_col9_shot = st.empty()
+
+                        time.sleep(load_time_plot)  # Simulação de um pequeno tempo de processamento
+                        progress_bar_col9_shot.progress(20)
+                        status_text_col9_shot.text("Inicializando...")
+
+                        # Configuração de opções para o gráfico de Shot
+                        event_type = 'Shot'
+                        event_type_translated = translate_event(event_type)
+                        st.subheader(f"Mapa: {event_type_translated}")
+                        
+                        col10_shot = st.columns([1, 1])
+                        with col10_shot[0]:
+                            arrows = st.checkbox("Mostrar Setas", value=True, key='arrows2')
+                        with col10_shot[1]:
+                            heat_map = st.checkbox("Mostrar Mapa de Calor", value=False, key='heat_map2')
+
+                        # Atualizando progresso após a escolha das opções
+                        time.sleep(load_time_plot)  # Simulação de tempo para configuração
+                        progress_bar_col9_shot.progress(40)
+                        status_text_col9_shot.text("Configurando opções...")
+
+                        # Plotagem do gráfico de Shot
+                        fig, soma_linha_zero = plot_passes_without_filter_player(final_data, event_type, arrows=arrows, heat_map=heat_map, visao=visao, home_team=home_team, away_team=away_team)
+
+                        # Atualizando progresso após a plotagem
+                        progress_bar_col9_shot.progress(80)
+                        status_text_col9_shot.text("Gerando gráfico...")
+
+                        # Exibir o gráfico se houver dados
+                        if soma_linha_zero != 0:
+                            st.pyplot(fig)
+                            progress_bar_col9_shot.progress(100)
+                            status_text_col9_shot.text("Plotagem concluída!")
+                        else:
+                            st.warning("Nenhum dado disponível para plotagem.")
+
+                        # Limpar a barra de progresso e a mensagem de status após um breve tempo
+                        time.sleep(load_time_plot)
+                        progress_bar_col9_shot.empty()
+                        status_text_col9_shot.empty()
+            
+            # st.subheader(f"Detalhamento do evento de {event_type}")
+            # #st.dataframe(events.columns)
+            # events_to_show = events.reset_index(drop=True)
+            # events_to_show.index = events_to_show.index + 1
+            # st.dataframe(events_to_show)
             
 
             # Filtrando apenas as colunas que estão disponíveis nos eventos
@@ -678,12 +852,13 @@ def run():
             # Exibindo o DataFrame no Streamlit
             st.write("")
             st.subheader("Eventos da Partida")
-            col6 = st.columns([1, 1, 1])
+            col6 = st.columns([1, 1])
             with col6[0]:
-                events_filtered, event_type = filter_events(events_filtered, todos=False)
+                events_filtered, event_type = filter_events(events_filtered, todos=True)
             with col6[1]:
-                players_filtered, player = filter_players(events_filtered, todos=False)
+                players_filtered, player = filter_players(events_filtered, todos=True)
                 
+            
             
             st.dataframe(players_filtered, hide_index = True)
             download_df(players_filtered)
