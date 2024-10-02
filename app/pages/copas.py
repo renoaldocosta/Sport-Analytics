@@ -34,7 +34,265 @@ import flagpy as fp
 # Funções customizadas de texto
 from app.Scripts.text_functions import mkd_text_divider, mkd_text, mkd_paragraph
 
+
 parser = Sbopen()
+
+
+def plot_pizza_comparison(params, values_player1, values_player2, player1, player2, font_normal, font_italic, font_bold, player1_team, player2_team):
+    
+    values = values_player1 + values_player2
+    min_values = [min(values)] * len(params)
+    max_values = [max(values)] * len(params)
+    
+    # st.write(len(params), len(values_player1), len(values_player2))
+    length = len(params)
+    while len(values_player1) < length:
+        values_player1.append(0)
+    while len(values_player2) < length:
+        values_player2.append(0)
+    """
+    Plota um gráfico de comparação sobreposto para dois jogadores usando PyPizza.
+    
+    Args:
+        params (list): Lista de parâmetros/eventos.
+        values_player1 (list): Valores para o primeiro jogador.
+        values_player2 (list): Valores para o segundo jogador.
+        player1 (str): Nome do primeiro jogador.
+        player2 (str): Nome do segundo jogador.
+        font_normal, font_italic, font_bold: Fontes para estilização.
+    
+    Returns:
+        matplotlib.figure.Figure: Figura do gráfico gerado.
+    """
+    # Instanciar a classe PyPizza
+    
+                            
+    baker = PyPizza(
+        params=params,                  # lista de parâmetros
+        background_color="#EBEBE9",     # cor de fundo
+        straight_line_color="#222222",  # cor das linhas retas
+        straight_line_lw=1,             # largura das linhas retas
+        last_circle_lw=1,               # largura da última circunferência
+        last_circle_color="#222222",    # cor da última circunferência
+        other_circle_ls="-.",           # estilo da linha das outras circunferências
+        other_circle_lw=1,                # largura das outras circunferências
+        min_range=min_values,                    # valor mínimo
+        max_range=max_values  
+    )
+    
+    # Plotar o gráfico de pizza
+    fig, ax = baker.make_pizza(
+        values_player1,                     # lista de valores do jogador 1
+        compare_values=values_player2,      # lista de valores do jogador 2
+        figsize=(10, 10),                   # tamanho da figura
+        param_location=110,                 # localização dos parâmetros
+        kwargs_slices=dict(
+            facecolor="#1A78CF", edgecolor="#222222",
+            zorder=2, linewidth=1
+        ),                                  # estilo das fatias do jogador 1
+        kwargs_compare=dict(
+            facecolor="#FF9300", edgecolor="#222222",
+            zorder=2, linewidth=1,
+        ),                                  # estilo das fatias do jogador 2
+        kwargs_params=dict(
+            color="#000000", fontsize=12,
+            fontproperties=font_normal.prop, va="center"
+        ),                                  # estilo dos parâmetros
+        kwargs_values=dict(
+            color="#000000", fontsize=12,
+            fontproperties=font_normal.prop, zorder=3,
+            bbox=dict(
+                edgecolor="#000000", facecolor="cornflowerblue",
+                boxstyle="round,pad=0.2", lw=1
+            )
+        ),                                  # estilo dos valores do jogador 1
+        kwargs_compare_values=dict(
+            color="#000000", fontsize=12, fontproperties=font_normal.prop, zorder=3,
+            bbox=dict(edgecolor="#000000", facecolor="#FF9300", boxstyle="round,pad=0.2", lw=1)
+        ),                                  # estilo dos valores do jogador 2
+    )
+    
+    
+    fig.text(
+        0.515, 0.97, f"{player1} vs {player2}", size=18,
+        ha="center", fontproperties=font_bold.prop, color="#000000"
+    )
+    # Adicionar subtítulo
+    # add subtitle
+    fig.text(
+        0.515, 0.942,
+        f"{player1_team} vs {player2_team}",
+        size=15,
+        ha="center", fontproperties=font_bold.prop, color="#000000"
+    )
+    
+    # Adicionar créditos
+    CREDIT_1 = "data: statsbomb viz fbref"
+    CREDIT_2 = "inspired by: @Worville, @FootballSlices, @somazerofc & @Soumyaj15209314"
+    
+    fig.text(
+        0.99, 0.005, f"{CREDIT_1}\n{CREDIT_2}", size=9,
+        fontproperties=font_italic.prop, color="#000000",
+        ha="right"
+    )
+    
+    params_offset = [False] * len(params)  # Exemplo: nenhum ajuste
+    
+    baker.adjust_texts(params_offset, offset=-0.17, adj_comp_values=True)
+    
+    return fig
+
+
+def somar_eventos(df_player1, df_player2):
+    """
+    Função para somar os eventos de dois dataframes, combinando as linhas com base na coluna 'Parâmetros'.
+    
+    Args:
+    df_player1 (pd.DataFrame): DataFrame do primeiro jogador.
+    df_player2 (pd.DataFrame): DataFrame do segundo jogador.
+
+    Returns:
+    pd.DataFrame: DataFrame resultante com os valores somados, ordenado pela soma dos eventos ('Total').
+    """
+    # Fazendo merge dos dois dataframes com base na coluna 'Parâmetros'
+    df_total = pd.merge(df_player1, df_player2, on='Parâmetros', how='outer', suffixes=('_player1', '_player2'))
+    
+    # Substituindo valores NaN por 0 para somar corretamente
+    df_total.fillna(0, inplace=True)
+
+    # Selecionando apenas colunas numéricas para realizar a soma
+    colunas_numericas = df_total.columns.difference(['Parâmetros'])
+    
+    # Somando as colunas numéricas de player1 e player2
+    df_total['Total'] = df_total[colunas_numericas].sum(axis=1)
+
+    # Retornando apenas a coluna 'Parâmetros' e 'Total', ordenado pelo total
+    df_total = df_total[['Parâmetros', 'Total']].sort_values(by='Total', ascending=False)
+
+    return df_total
+
+
+def calculate_event_counts(player_id, event_type,events):
+            return events[(events['player_id'] == player_id) & (events['type'] == event_type)].shape[0]
+
+def return_df_events_players(events, player_id, event_translation):
+    params = []
+    values = []
+
+    for event in list(event_translation.keys()):
+        # Traduzir o evento
+        translated_event = event_translation[event]
+        # Calcular o número de vezes que o evento ocorreu para o jogador
+        event_count = calculate_event_counts(player_id, event,events)
+        # Adicionar à lista de parâmetros e valores
+        params.append(translated_event)
+        values.append(event_count)
+    df = pd.DataFrame({'Parâmetros': params, 'Valores': values}).sort_values(by='Valores', ascending=False).reset_index(drop=True)
+    
+    return df
+
+def translate_position(position):
+    # Dicionário para mapear posições de futebol em inglês para português
+    position_translation = {
+        'Right Wing Back': 'Ala Direito',
+        'Right Defensive Midfield': 'Volante Direito',
+        'Right Center Back': 'Zagueiro Direito',
+        'Left Defensive Midfield': 'Volante Esquerdo',
+        'Left Wing Back': 'Ala Esquerdo',
+        'Left Center Back': 'Zagueiro Esquerdo',
+        'Center Back': 'Zagueiro Central',
+        'Goalkeeper': 'Goleiro',
+        'Center Attacking Midfield': 'Meia Ofensivo Central',
+        'Left Center Forward': 'Atacante Esquerdo',
+        'Right Center Forward': 'Atacante Direito',
+        'Substitute': 'Substituto',
+        'Center Forward': 'Atacante Central',
+        'nan': 'Indefinido'  # Para lidar com valores NaN
+    }
+    return position_translation.get(position, position)
+
+
+def percent(value, total):
+    if total == 0:
+        return 0
+    else:
+        return round((value / total) * 100,2)
+
+@st.cache_data
+def lineups_metrics(lineups, visao, home_lineup, away_lineup):
+    if "Casa" in visao:
+        lineups = process_lineup(home_lineup)
+        
+    elif "Visitante" in visao:
+        lineups = process_lineup(away_lineup)
+    elif visao == "Geral":
+        home_lineup = process_lineup(home_lineup)
+        away_lineup = process_lineup(away_lineup)
+        lineups = pd.concat([home_lineup, away_lineup])
+    try:
+        yellow_cards = lineups['card_0_card_type'].value_counts().get('Yellow Card', 0)
+    except:
+        yellow_cards = 0
+    try:
+        red_cards = lineups['card_0_card_type'].value_counts().get('Red Card', 0)
+    except:
+        red_cards = 0
+    
+    return lineups, yellow_cards, red_cards
+    
+
+def download_df(df):
+    col7 = st.columns([1, 1,1])
+    with col7[1]:
+        csv = df.to_csv(index=False)
+        st.download_button(label="Download CSV", data=csv, file_name='eventos.csv', mime='text/csv', use_container_width=True)
+    
+
+
+
+
+def expand_column(df, column_name, prefix):
+    """
+    Expande uma coluna que contém dicionários ou listas de dicionários em múltiplas colunas.
+    
+    Args:
+        df (pd.DataFrame): DataFrame original.
+        column_name (str): Nome da coluna a ser expandida.
+        prefix (str): Prefixo para as novas colunas.
+        
+    Returns:
+        pd.DataFrame: DataFrame com a coluna expandida.
+    """
+    expanded_df = df[column_name].apply(pd.Series)
+    expanded_df.columns = [f'{prefix}_{col}' for col in expanded_df.columns]
+    return pd.concat([df.drop(column_name, axis=1), expanded_df], axis=1)
+
+def process_lineup(lineup_df):
+    """
+    Processa o DataFrame de lineup expandindo as colunas necessárias.
+    
+    Args:
+        lineup_df (pd.DataFrame): DataFrame de lineup da equipe.
+        
+    Returns:
+        pd.DataFrame: DataFrame processado com colunas expandidas.
+    """
+    # Expandir a coluna 'positions'
+    lineup_df = expand_column(lineup_df, 'positions', 'position')
+    
+    # Expandir 'position_0' e 'position_1' se existirem
+    for pos in ['position_0', 'position_1']:
+        if pos in lineup_df.columns:
+            lineup_df = expand_column(lineup_df, pos, pos)
+    
+    # Expandir a coluna 'cards'
+    lineup_df = expand_column(lineup_df, 'cards', 'card')
+    
+    # Expandir 'card_0' se existir
+    if 'card_0' in lineup_df.columns:
+        lineup_df = expand_column(lineup_df, 'card_0', 'card_0')
+    
+    return lineup_df
 
 
 @st.cache_data
@@ -1343,13 +1601,13 @@ def run():
                             col13[0].pyplot(fig1)
                             col13[0].dataframe(df_player1, use_container_width=True)
                         except:
-                            st.warning("Nenhum dado disponível para plotagem referente ao jogador 1")
+                            st.warning("**Seleção de jogador Inválida**: Nenhum dado disponível para plotagem referente ao **jogador 1**")
                         try:
                             fig2 = get_plot_piza(params_player2, values_player2, player2, df_player2_pizza)
                             col13[1].pyplot(fig2)
                             col13[1].dataframe(df_player2, use_container_width=True)
                         except:
-                            st.warning("Nenhum dado disponível para plotagem referente ao jogador 2")
+                            st.warning("**Seleção de jogador Inválida**: Nenhum dado disponível para plotagem referente ao **jogador 2**")
                         
             try:
                 # Renomeando as colunas de valores para identificar os jogadores
@@ -1387,264 +1645,10 @@ def run():
                 # Exibir o gráfico no Streamlit
                 st.pyplot(fig_comparison)
             except Exception as e:
-                st.write(e)
                 st.warning("Nenhum dado disponível para plotagem. Tente com outros jogadores.")
             
 
 
-def plot_pizza_comparison(params, values_player1, values_player2, player1, player2, font_normal, font_italic, font_bold, player1_team, player2_team):
-    
-    values = values_player1 + values_player2
-    min_values = [min(values)] * len(params)
-    max_values = [max(values)] * len(params)
-    
-    # st.write(len(params), len(values_player1), len(values_player2))
-    length = len(params)
-    while len(values_player1) < length:
-        values_player1.append(0)
-    while len(values_player2) < length:
-        values_player2.append(0)
-    """
-    Plota um gráfico de comparação sobreposto para dois jogadores usando PyPizza.
-    
-    Args:
-        params (list): Lista de parâmetros/eventos.
-        values_player1 (list): Valores para o primeiro jogador.
-        values_player2 (list): Valores para o segundo jogador.
-        player1 (str): Nome do primeiro jogador.
-        player2 (str): Nome do segundo jogador.
-        font_normal, font_italic, font_bold: Fontes para estilização.
-    
-    Returns:
-        matplotlib.figure.Figure: Figura do gráfico gerado.
-    """
-    # Instanciar a classe PyPizza
-    
-                            
-    baker = PyPizza(
-        params=params,                  # lista de parâmetros
-        background_color="#EBEBE9",     # cor de fundo
-        straight_line_color="#222222",  # cor das linhas retas
-        straight_line_lw=1,             # largura das linhas retas
-        last_circle_lw=1,               # largura da última circunferência
-        last_circle_color="#222222",    # cor da última circunferência
-        other_circle_ls="-.",           # estilo da linha das outras circunferências
-        other_circle_lw=1,                # largura das outras circunferências
-        min_range=min_values,                    # valor mínimo
-        max_range=max_values  
-    )
-    
-    # Plotar o gráfico de pizza
-    fig, ax = baker.make_pizza(
-        values_player1,                     # lista de valores do jogador 1
-        compare_values=values_player2,      # lista de valores do jogador 2
-        figsize=(10, 10),                   # tamanho da figura
-        param_location=110,                 # localização dos parâmetros
-        kwargs_slices=dict(
-            facecolor="#1A78CF", edgecolor="#222222",
-            zorder=2, linewidth=1
-        ),                                  # estilo das fatias do jogador 1
-        kwargs_compare=dict(
-            facecolor="#FF9300", edgecolor="#222222",
-            zorder=2, linewidth=1,
-        ),                                  # estilo das fatias do jogador 2
-        kwargs_params=dict(
-            color="#000000", fontsize=12,
-            fontproperties=font_normal.prop, va="center"
-        ),                                  # estilo dos parâmetros
-        kwargs_values=dict(
-            color="#000000", fontsize=12,
-            fontproperties=font_normal.prop, zorder=3,
-            bbox=dict(
-                edgecolor="#000000", facecolor="cornflowerblue",
-                boxstyle="round,pad=0.2", lw=1
-            )
-        ),                                  # estilo dos valores do jogador 1
-        kwargs_compare_values=dict(
-            color="#000000", fontsize=12, fontproperties=font_normal.prop, zorder=3,
-            bbox=dict(edgecolor="#000000", facecolor="#FF9300", boxstyle="round,pad=0.2", lw=1)
-        ),                                  # estilo dos valores do jogador 2
-    )
-    
-    
-    fig.text(
-        0.515, 0.97, f"{player1} vs {player2}", size=18,
-        ha="center", fontproperties=font_bold.prop, color="#000000"
-    )
-    # Adicionar subtítulo
-    # add subtitle
-    fig.text(
-        0.515, 0.942,
-        f"{player1_team} vs {player2_team}",
-        size=15,
-        ha="center", fontproperties=font_bold.prop, color="#000000"
-    )
-    
-    # Adicionar créditos
-    CREDIT_1 = "data: statsbomb viz fbref"
-    CREDIT_2 = "inspired by: @Worville, @FootballSlices, @somazerofc & @Soumyaj15209314"
-    
-    fig.text(
-        0.99, 0.005, f"{CREDIT_1}\n{CREDIT_2}", size=9,
-        fontproperties=font_italic.prop, color="#000000",
-        ha="right"
-    )
-    
-    params_offset = [False] * len(params)  # Exemplo: nenhum ajuste
-    
-    baker.adjust_texts(params_offset, offset=-0.17, adj_comp_values=True)
-    
-    return fig
-
-
-def somar_eventos(df_player1, df_player2):
-    """
-    Função para somar os eventos de dois dataframes, combinando as linhas com base na coluna 'Parâmetros'.
-    
-    Args:
-    df_player1 (pd.DataFrame): DataFrame do primeiro jogador.
-    df_player2 (pd.DataFrame): DataFrame do segundo jogador.
-
-    Returns:
-    pd.DataFrame: DataFrame resultante com os valores somados, ordenado pela soma dos eventos ('Total').
-    """
-    # Fazendo merge dos dois dataframes com base na coluna 'Parâmetros'
-    df_total = pd.merge(df_player1, df_player2, on='Parâmetros', how='outer', suffixes=('_player1', '_player2'))
-    
-    # Substituindo valores NaN por 0 para somar corretamente
-    df_total.fillna(0, inplace=True)
-
-    # Selecionando apenas colunas numéricas para realizar a soma
-    colunas_numericas = df_total.columns.difference(['Parâmetros'])
-    
-    # Somando as colunas numéricas de player1 e player2
-    df_total['Total'] = df_total[colunas_numericas].sum(axis=1)
-
-    # Retornando apenas a coluna 'Parâmetros' e 'Total', ordenado pelo total
-    df_total = df_total[['Parâmetros', 'Total']].sort_values(by='Total', ascending=False)
-
-    return df_total
-
-
-def calculate_event_counts(player_id, event_type,events):
-            return events[(events['player_id'] == player_id) & (events['type'] == event_type)].shape[0]
-
-def return_df_events_players(events, player_id, event_translation):
-    params = []
-    values = []
-
-    for event in list(event_translation.keys()):
-        # Traduzir o evento
-        translated_event = event_translation[event]
-        # Calcular o número de vezes que o evento ocorreu para o jogador
-        event_count = calculate_event_counts(player_id, event,events)
-        # Adicionar à lista de parâmetros e valores
-        params.append(translated_event)
-        values.append(event_count)
-    df = pd.DataFrame({'Parâmetros': params, 'Valores': values}).sort_values(by='Valores', ascending=False).reset_index(drop=True)
-    
-    return df
-
-def translate_position(position):
-    # Dicionário para mapear posições de futebol em inglês para português
-    position_translation = {
-        'Right Wing Back': 'Ala Direito',
-        'Right Defensive Midfield': 'Volante Direito',
-        'Right Center Back': 'Zagueiro Direito',
-        'Left Defensive Midfield': 'Volante Esquerdo',
-        'Left Wing Back': 'Ala Esquerdo',
-        'Left Center Back': 'Zagueiro Esquerdo',
-        'Center Back': 'Zagueiro Central',
-        'Goalkeeper': 'Goleiro',
-        'Center Attacking Midfield': 'Meia Ofensivo Central',
-        'Left Center Forward': 'Atacante Esquerdo',
-        'Right Center Forward': 'Atacante Direito',
-        'Substitute': 'Substituto',
-        'Center Forward': 'Atacante Central',
-        'nan': 'Indefinido'  # Para lidar com valores NaN
-    }
-    return position_translation.get(position, position)
-
-
-def percent(value, total):
-    if total == 0:
-        return 0
-    else:
-        return round((value / total) * 100,2)
-
-@st.cache_data
-def lineups_metrics(lineups, visao, home_lineup, away_lineup):
-    if "Casa" in visao:
-        lineups = process_lineup(home_lineup)
-        
-    elif "Visitante" in visao:
-        lineups = process_lineup(away_lineup)
-    elif visao == "Geral":
-        home_lineup = process_lineup(home_lineup)
-        away_lineup = process_lineup(away_lineup)
-        lineups = pd.concat([home_lineup, away_lineup])
-    try:
-        yellow_cards = lineups['card_0_card_type'].value_counts().get('Yellow Card', 0)
-    except:
-        yellow_cards = 0
-    try:
-        red_cards = lineups['card_0_card_type'].value_counts().get('Red Card', 0)
-    except:
-        red_cards = 0
-    
-    return lineups, yellow_cards, red_cards
-    
-
-def download_df(df):
-    col7 = st.columns([1, 1,1])
-    with col7[1]:
-        csv = df.to_csv(index=False)
-        st.download_button(label="Download CSV", data=csv, file_name='eventos.csv', mime='text/csv', use_container_width=True)
-    
 
 if __name__ == "__main__":
     run()
-
-
-def expand_column(df, column_name, prefix):
-    """
-    Expande uma coluna que contém dicionários ou listas de dicionários em múltiplas colunas.
-    
-    Args:
-        df (pd.DataFrame): DataFrame original.
-        column_name (str): Nome da coluna a ser expandida.
-        prefix (str): Prefixo para as novas colunas.
-        
-    Returns:
-        pd.DataFrame: DataFrame com a coluna expandida.
-    """
-    expanded_df = df[column_name].apply(pd.Series)
-    expanded_df.columns = [f'{prefix}_{col}' for col in expanded_df.columns]
-    return pd.concat([df.drop(column_name, axis=1), expanded_df], axis=1)
-
-def process_lineup(lineup_df):
-    """
-    Processa o DataFrame de lineup expandindo as colunas necessárias.
-    
-    Args:
-        lineup_df (pd.DataFrame): DataFrame de lineup da equipe.
-        
-    Returns:
-        pd.DataFrame: DataFrame processado com colunas expandidas.
-    """
-    # Expandir a coluna 'positions'
-    lineup_df = expand_column(lineup_df, 'positions', 'position')
-    
-    # Expandir 'position_0' e 'position_1' se existirem
-    for pos in ['position_0', 'position_1']:
-        if pos in lineup_df.columns:
-            lineup_df = expand_column(lineup_df, pos, pos)
-    
-    # Expandir a coluna 'cards'
-    lineup_df = expand_column(lineup_df, 'cards', 'card')
-    
-    # Expandir 'card_0' se existir
-    if 'card_0' in lineup_df.columns:
-        lineup_df = expand_column(lineup_df, 'card_0', 'card_0')
-    
-    return lineup_df
