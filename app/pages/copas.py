@@ -1186,6 +1186,8 @@ def run():
                 players = [lineups.loc[lineups['player_id'] == player_id, 'player_name'].values[0] for player_id in players_id]
                 player1 = st.selectbox("Selecione o primeiro jogador:", players, key='player1')
                 player1_id = lineups.loc[lineups['player_name'] == player1, 'player_id'].values[0]
+                player1_team = events[events['player_id'] == player1_id]['team'].values[0]
+                
                 # Exibir todos os eventos do jogador em um dataframe ordenado
                 # try:
                 #     st.write(events[events['player_id'] == player1_id])
@@ -1196,6 +1198,7 @@ def run():
                 players.remove(player1)
                 player2 = st.selectbox("Selecione o segundo jogador:", players, key='player2')
                 palyer2_id = lineups.loc[lineups['player_name'] == player2, 'player_id'].values[0]
+                player2_team = events[events['player_id'] == palyer2_id]['team'].values[0]
             conteiner_filtro_eventos = st.container()
             with st.expander("📊📈 Comparação de Jogadores", expanded=False):
                 col13 = st.columns([1,1])
@@ -1380,7 +1383,7 @@ def run():
 
                             # add title
                             fig.text(
-                                0.515, 0.97, f"{player} - FC Bayern Munich", size=18,
+                                0.515, 0.97, f"{player} - ()", size=18,
                                 ha="center", fontproperties=font_bold.prop, color="#000000"
                             )
 
@@ -1400,13 +1403,70 @@ def run():
                         # max_df1 = df_player1['Valores'].max()
                         # max_df2 = df_player2['Valores'].max()
                         # max_value = max(max_df1, max_df2)
-                        fig1 = get_plot_piza(params_player1, values_player1, player1,df_player1_pizza)
-                        fig2 = get_plot_piza(params_player2, values_player2, player2, df_player2_pizza)
-                        col13[0].pyplot(fig1)
-                        col13[1].pyplot(fig2)
-                        col13[0].dataframe(df_player1, use_container_width=True)
-                        col13[1].dataframe(df_player2, use_container_width=True)
+                        try:
+                            fig1 = get_plot_piza(params_player1, values_player1, player1,df_player1_pizza)
+                            col13[0].pyplot(fig1)
+                            col13[0].dataframe(df_player1, use_container_width=True)
+                        except:
+                            st.warning("Nenhum dado disponível para plotagem referente ao jogador 1")
+                        try:
+                            fig2 = get_plot_piza(params_player2, values_player2, player2, df_player2_pizza)
+                            col13[1].pyplot(fig2)
+                            col13[1].dataframe(df_player2, use_container_width=True)
+                        except:
+                            st.warning("Nenhum dado disponível para plotagem referente ao jogador 2")
+                        
                 # plt.show()
+            try:
+                # st.write(df_player1_pizza)
+                # st.write(df_player2_pizza)
+                # Renomeando as colunas de valores para identificar os jogadores
+                df_player1_pizza.rename(columns={'Valores': 'Player1'}, inplace=True)
+                df_player2_pizza.rename(columns={'Valores': 'Player2'}, inplace=True)
+
+                # Merge dos dois DataFrames usando 'Evento' como chave
+                df_comparacao = pd.merge(df_player1_pizza, df_player2_pizza, on='Parâmetros', how='outer')
+
+                # Substituindo valores NaN por 0
+                df_comparacao.fillna(0, inplace=True)
+
+                # Convertendo para inteiros para evitar casas decimais
+                df_comparacao[['Player1', 'Player2']] = df_comparacao[['Player1', 'Player2']].astype(int)
+                df_comparacao = df_comparacao.sort_values(by='Player1', ascending=False)
+                df_comparacao = df_comparacao[(df_comparacao['Player1'] > 0) | (df_comparacao['Player2'] > 0)]
+                # st.write(df_comparacao)
+                params_final = df_comparacao['Parâmetros'].tolist()
+                values_player1 = df_comparacao['Player1'].tolist()
+                values_player2 = df_comparacao['Player2'].tolist()
+                # Plotar o gráfico de comparação
+                # df_player1_pizza = df_player1_pizza[df_player1_pizza['Valores'] > 0]
+                # df_player2_pizza = df_player2_pizza[df_player2_pizza['Valores'] > 0]
+                # param1 = df_player1_pizza['Parâmetros'].tolist()
+                # values1 = df_player1_pizza['Valores'].tolist()
+                # param2 = df_player2_pizza['Parâmetros'].tolist()
+                # values2 = df_player2_pizza['Valores'].tolist()
+                # # st.write(df_player1_pizza)
+                # # st.write(df_player2_pizza)
+                # params_final = param1 + param2
+                # params_final = list(set(params_final))
+                fig_comparison = plot_pizza_comparison(
+                    params=params_final,
+                    values_player1=values_player1,
+                    values_player2=values_player2,
+                    player1=player1,
+                    player2=player2,
+                    font_normal=font_normal,
+                    font_italic=font_italic,
+                    font_bold=font_bold,
+                    player1_team=player1_team,
+                    player2_team=player2_team
+                )
+                
+                # Exibir o gráfico no Streamlit
+                st.pyplot(fig_comparison)
+            except Exception as e:
+                st.write(e)
+                st.warning("Nenhum dado disponível para plotagem. Tente com outros jogadores.")
             
             
             
@@ -1442,6 +1502,118 @@ def run():
             #     #st.image("https://media.api-sports.io/football/players/5503.png", width=100)
             #     fig_2 = plot_passes(final_data, "Lionel Andrés Messi Cuccittini")
             #     st.pyplot(fig_2)
+
+def plot_pizza_comparison(params, values_player1, values_player2, player1, player2, font_normal, font_italic, font_bold, player1_team, player2_team):
+    
+      
+    
+    values = values_player1 + values_player2
+    min_values = [min(values)] * len(params)
+    max_values = [max(values)] * len(params)
+    
+    # st.write(len(params), len(values_player1), len(values_player2))
+    length = len(params)
+    while len(values_player1) < length:
+        values_player1.append(0)
+    while len(values_player2) < length:
+        values_player2.append(0)
+    """
+    Plota um gráfico de comparação sobreposto para dois jogadores usando PyPizza.
+    
+    Args:
+        params (list): Lista de parâmetros/eventos.
+        values_player1 (list): Valores para o primeiro jogador.
+        values_player2 (list): Valores para o segundo jogador.
+        player1 (str): Nome do primeiro jogador.
+        player2 (str): Nome do segundo jogador.
+        font_normal, font_italic, font_bold: Fontes para estilização.
+    
+    Returns:
+        matplotlib.figure.Figure: Figura do gráfico gerado.
+    """
+    # Instanciar a classe PyPizza
+    
+                            
+    baker = PyPizza(
+        params=params,                  # lista de parâmetros
+        background_color="#EBEBE9",     # cor de fundo
+        straight_line_color="#222222",  # cor das linhas retas
+        straight_line_lw=1,             # largura das linhas retas
+        last_circle_lw=1,               # largura da última circunferência
+        last_circle_color="#222222",    # cor da última circunferência
+        other_circle_ls="-.",           # estilo da linha das outras circunferências
+        other_circle_lw=1,                # largura das outras circunferências
+        min_range=min_values,                    # valor mínimo
+        max_range=max_values  
+    )
+    
+    # Plotar o gráfico de pizza
+    fig, ax = baker.make_pizza(
+        values_player1,                     # lista de valores do jogador 1
+        compare_values=values_player2,      # lista de valores do jogador 2
+        figsize=(10, 10),                   # tamanho da figura
+        param_location=110,                 # localização dos parâmetros
+        kwargs_slices=dict(
+            facecolor="#1A78CF", edgecolor="#222222",
+            zorder=2, linewidth=1
+        ),                                  # estilo das fatias do jogador 1
+        kwargs_compare=dict(
+            facecolor="#FF9300", edgecolor="#222222",
+            zorder=2, linewidth=1,
+        ),                                  # estilo das fatias do jogador 2
+        kwargs_params=dict(
+            color="#000000", fontsize=12,
+            fontproperties=font_normal.prop, va="center"
+        ),                                  # estilo dos parâmetros
+        kwargs_values=dict(
+            color="#000000", fontsize=12,
+            fontproperties=font_normal.prop, zorder=3,
+            bbox=dict(
+                edgecolor="#000000", facecolor="cornflowerblue",
+                boxstyle="round,pad=0.2", lw=1
+            )
+        ),                                  # estilo dos valores do jogador 1
+        kwargs_compare_values=dict(
+            color="#000000", fontsize=12, fontproperties=font_normal.prop, zorder=3,
+            bbox=dict(edgecolor="#000000", facecolor="#FF9300", boxstyle="round,pad=0.2", lw=1)
+        ),                                  # estilo dos valores do jogador 2
+    )
+    
+    
+    fig.text(
+        0.515, 0.97, f"{player1} vs {player2}", size=18,
+        ha="center", fontproperties=font_bold.prop, color="#000000"
+    )
+    # Adicionar subtítulo
+    # add subtitle
+    fig.text(
+        0.515, 0.942,
+        f"{player1_team} vs {player2_team}",
+        size=15,
+        ha="center", fontproperties=font_bold.prop, color="#000000"
+    )
+    
+    # Adicionar créditos
+    CREDIT_1 = "data: statsbomb viz fbref"
+    CREDIT_2 = "inspired by: @Worville, @FootballSlices, @somazerofc & @Soumyaj15209314"
+    
+    fig.text(
+        0.99, 0.005, f"{CREDIT_1}\n{CREDIT_2}", size=9,
+        fontproperties=font_italic.prop, color="#000000",
+        ha="right"
+    )
+    
+    # Ajustar textos sobrepostos (opcional)
+    # Define quais parâmetros terão offset (True) ou não (False)
+    # Você pode personalizar esta lista conforme necessário
+    params_offset = [False] * len(params)  # Exemplo: nenhum ajuste
+    # Exemplo com alguns ajustes
+    # params_offset = [False, True, False, True, ...]
+    
+    baker.adjust_texts(params_offset, offset=-0.17, adj_comp_values=True)
+    
+    return fig
+
 
 def somar_eventos(df_player1, df_player2):
     """
