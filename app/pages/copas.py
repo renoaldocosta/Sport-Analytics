@@ -1,19 +1,38 @@
-import streamlit as st
-from statsbombpy import sb
-import pandas as pd
-from datetime import datetime
-from app.Scripts.text_functions import mkd_text_divider, mkd_text, mkd_paragraph
-import flagpy as fp
-from mplsoccer import Pitch,Sbopen
+# Bibliotecas Padrão
 import time
-import plotly.graph_objects as go
-from mplsoccer import Radar, FontManager, grid
-import matplotlib.pyplot as plt
-from mplsoccer import VerticalPitch, Sbopen, FontManager, inset_image
-from PIL import Image
+from datetime import datetime
 from urllib.request import urlopen
-from mplsoccer import PyPizza, add_image, FontManager
 
+# Bibliotecas Externas
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+from PIL import Image
+
+# StatsBomb API
+from statsbombpy import sb
+
+# Bibliotecas de Visualização - MPL Soccer
+from mplsoccer import (
+    Pitch,
+    Sbopen,
+    Radar,
+    FontManager,
+    grid,
+    VerticalPitch,
+    inset_image,
+    PyPizza,
+    add_image
+)
+
+# Plotly para visualizações interativas
+import plotly.graph_objects as go
+
+# Biblioteca para bandeiras de países
+import flagpy as fp
+
+# Funções customizadas de texto
+from app.Scripts.text_functions import mkd_text_divider, mkd_text, mkd_paragraph
 
 parser = Sbopen()
 
@@ -130,10 +149,6 @@ def plot_fouls_suffered_top10(match_data, visao='Geral', home_team='', away_team
     )
 
     return fig
-
-
-
-
 
 @st.cache_data
 def plot_passes_vs_goals(match_data, visao='Geral', home_team='', away_team=''):
@@ -279,13 +294,8 @@ def carregar_dados():
     status_text = st.empty()
     time.sleep(tempo_carregamento)
 
-    # Passo 1: Carregar Competitions
-    
-
-    # Passo 2: Selecionar Competição
     selected_competition = st.selectbox('Selecione a Competição', competitions_df['competition_name'].unique())
 
-    # Passo 3: Selecionar Temporada
     selected_season = st.selectbox('Selecione a Temporada', competitions_df['season_name'].unique())
 
     # Obter competition_id e season_id baseados na seleção
@@ -296,28 +306,12 @@ def carregar_dados():
     selected_competition_id = selected_row['competition_id'].values[0]
     selected_season_id = selected_row['season_id'].values[0]
 
-    # Passo 4: Carregar Matches
-    
-
-    # Passo 5: Selecionar Partida
     selected_match = st.selectbox('Selecione a Partida', matches_df['match_date'].unique())
     selected_match_id = matches_df[matches_df['match_date'] == selected_match]['match_id'].values[0]
-
-    # Passo 6: Carregar Eventos
-    
-
-    # Limpar a Barra de Progresso
-    
-    
 
 
 def match_data(match_id):
     return parser.event(match_id=match_id)[0]
-
-import pandas as pd
-import matplotlib.pyplot as plt
-import streamlit as st
-from mplsoccer import Pitch
 
 @st.cache_data
 def plot_passes_without_filter_player(match_data, event_type='Pass', arrows=True, heat_map=False, visao='Geral', home_team='', away_team=''):
@@ -373,8 +367,6 @@ def plot_passes_without_filter_player(match_data, event_type='Pass', arrows=True
         pitch.arrows(df_valid['x'], df_valid['y'], df_valid['end_x'], df_valid['end_y'], 
                     width=2, color='blue', alpha=0.6, ax=ax, label=f'{event_type_translated}')
     
-    
-    
     # Plotar pontos para eventos inválidos
     if not df_invalid.empty:
         scatter = pitch.scatter(df_invalid['x'], df_invalid['y'], s=100, color='red', edgecolors='black', 
@@ -399,8 +391,6 @@ def plot_passes_without_filter_player(match_data, event_type='Pass', arrows=True
     plt.gcf().text(0.02, 0.95, info_text, fontsize=12, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.5))
     
     return fig, soma_linha_zero
-
-
 
 def plot_passes(match_data, player_name, event_type='Pass'):
     # Filtrar os dados para o tipo de evento e jogador especificado
@@ -513,8 +503,6 @@ def translate_event(event_type):
         'Substitution': 'Substituição',
         'Tactical Shift': 'Mudança Tática'
     }
-
-
     return event_translation.get(event_type, event_type)
 
 def filter_events(events, todos=True):
@@ -629,10 +617,6 @@ def filter_vision(visao, match_id, home_team, away_team):
     elif visao == "Geral":
         pass
     return events
-
-
-
-
 
 def restart_session_state(nivel):
     if nivel == "event_type":
@@ -937,15 +921,13 @@ def run():
                     st.subheader(f"Mapa: {event_type}")
                     st.pyplot(fig)
             st.subheader(f"Detalhamento do evento de {event_type}")
-            #st.dataframe(events.columns)
+
             events_to_show = events.reset_index(drop=True)
             events_to_show.index = events_to_show.index + 1
             st.dataframe(events_to_show)
             
             def match_data_2(match_id):
                 return parser.event(match_id=match_id)[0]
-            #st.dataframe(match_data_2(match_id).columns)
-            #st.dataframe(match_data_2(match_id))
         
     
     with tab2: # st.subheader("Técnicos")
@@ -960,7 +942,6 @@ def run():
                 st.markdown(f"<h5 >{away_managers}</h5>", unsafe_allow_html=True)    
             st.divider()
             st.subheader("Jogadores")
-            #with st.expander("👥 Jogadores",expanded=True):
             col3 = st.columns([1,1])
             with col3[0]:
                 st.markdown(f"<h3 style='color: green'>{home_team} (Casa)</h3>", unsafe_allow_html=True)
@@ -972,7 +953,6 @@ def run():
                         
                         # Exibir o resultado no Streamlit
                         st.write(df_home)
-                #st.dataframe(home_lineup)
             with col3[1]:
                 st.markdown(f"<h3 style='color: red'>{away_team} (Visitante)</h3>", unsafe_allow_html=True)
                 with st.container(border=True):
@@ -983,11 +963,9 @@ def run():
                         
                         # Exibir o resultado no Streamlit
                         st.write(df_away)
-                #st.dataframe(away_lineup)
     with tab5: # st.subheader("Detalhes da Partida")
         with st.container(border=True):
         # ========================== Detalhes da Partida ==========================
-            #with st.expander("🏟️👔 Partida e Técnicos:", expanded=True):
             st.subheader("Detalhes da Partida")
             st.write(f"**Estádio:** {match['stadium']}")
             # match_week
@@ -999,7 +977,13 @@ def run():
     with tab1: # st.subheader("Métricas")
         with st.container(border=True):
             
+            col_team = st.columns([1,1])
+            with col_team[0]:
+                st.markdown(f"<h3 style='color: green'>{home_team} (Casa)</h3>", unsafe_allow_html=True)
+            with col_team[1]:
+                st.markdown(f"<h3 style='color: red'>{away_team} (Visitante)</h3>", unsafe_allow_html=True)
             st.subheader("Métricas")
+            
             col5 = st.columns([1, 1,1])
             with col5[1]:
                 visao = st.radio("", [f"Casa","Geral", "Visitante"], horizontal=True, index=1)
@@ -1158,12 +1142,6 @@ def run():
                 if fig_top10_fouls:
                     st.plotly_chart(fig_top10_fouls, use_container_width=True)
                 
-            # st.subheader(f"Detalhamento do evento de {event_type}")
-            # #st.dataframe(events.columns)
-            # events_to_show = events.reset_index(drop=True)
-            # events_to_show.index = events_to_show.index + 1
-            # st.dataframe(events_to_show)
-            
             # Filtrando apenas as colunas que estão disponíveis nos eventos
             events_filtered = events[event_columns].copy()
 
@@ -1193,12 +1171,6 @@ def run():
                 except:
                     player1_team = "Não informado"
                 
-                # Exibir todos os eventos do jogador em um dataframe ordenado
-                # try:
-                #     st.write(events[events['player_id'] == player1_id])
-                # except:
-                #     pass
-                # st.write(events['type'].value_counts())
             with col12[3]:
                 players.remove(player1)
                 player2 = st.selectbox("Selecione o segundo jogador:", players, key='player2')
@@ -1210,16 +1182,6 @@ def run():
             conteiner_filtro_eventos = st.container()
             with st.expander("📊📈 Comparação de Jogadores", expanded=True):
                 col13 = st.columns([1,1])
-            # st.subheader(f"{player1} Vs. {player2}")
-            
-            # st.write(season_id, match_id)
-            # fifa_world_cup22 = sb.matches(competition_id=43, season_id=season_id)
-            # final_match_id = match_id #fifa_world_cup22[(fifa_world_cup22['home_team'] == "Argentina") & (fifa_world_cup22['away_team'] == "France")].match_id.values[0]
-            # final_data = match_data(final_match_id)
-            # st.write(player1, player1_id)
-            # st.write(player2, palyer2_id)
-            # line_ups = sb.lineups(match_id=final_match_id)
-            # st.write(lineups)
             
             # Função para calcular as ocorrências de eventos para o jogador
             
@@ -1257,12 +1219,7 @@ def run():
             
             
             df_resultado = somar_eventos(df_player1, df_player2)
-            # st.write('df_resultado',df_resultado)
-            #Supondo que df_resultado já está definido e contém uma coluna 'Parâmetros'
             columns_top10 = df_resultado['Parâmetros'].head(10).to_list()
-            
-            # st.write('columns_top10',type(columns_top10))
-            
             
             # Inverter o dicionário event_translation para ter traduções como chave e inglês como valor
             inverted_event_translation = {v: k for k, v in event_translation.items()}
@@ -1276,16 +1233,6 @@ def run():
 
             # Criar um dataframe com os eventos destraduzidos
             df_top_10_destraduzido = pd.DataFrame({'Parâmetros': events_in_english})
-
-            # Exibir o resultado
-            # st.write(df_top_10_destraduzido)
-            # Filtrar eventos que têm tradução
-            # columns_top10 = [event for event in columns_top10 if event in event_translation]
-            # st.write('columns_top10',columns_top10)
-            # Traduzir para exibição (opcional)
-            # translated_events_top_10 = [event_translation[event] for event in columns_top10]
-
-            # st.write("Eventos Selecionados para o Gráfico de Pizza:", translated_events_top_10)
 
             # Configurar o multiselect corretamente
             with conteiner_filtro_eventos:
@@ -1317,10 +1264,7 @@ def run():
                             return params, values, df
                         params_player1, values_player1, df_player1_pizza = plot_pizza(player1_id)
                         params_player2, values_player2, df_player2_pizza = plot_pizza(palyer2_id)
-                        # col13[0].dataframe(df_player1)
-                        # Exibir os parâmetros e valores selecionados
-                        # st.write("Parâmetros Selecionados:", params)
-                        # st.write("Valores Correspondentes:", values)
+
                         font_normal = FontManager('https://raw.githubusercontent.com/googlefonts/roboto/main/'
                                                 'src/hinted/Roboto-Regular.ttf')
                         font_italic = FontManager('https://raw.githubusercontent.com/googlefonts/roboto/main/'
@@ -1328,18 +1272,6 @@ def run():
                         font_bold = FontManager('https://raw.githubusercontent.com/google/fonts/main/apache/robotoslab/'
                                                 'RobotoSlab[wght].ttf')
                         
-                        # params = [
-                        #     "Pass", "Shot", "Dribble", "Ball Receipt*",  
-                        #      "Ball Recovery",  
-                        #     "Dribbled Past", "Foul Won"
-                        # ]
-
-                        # # Criação da lista de valores, com base nas contagens acima
-                        # values = [
-                        #     passes_player1, shot_player1, dribble_player1, ball_receipt_player1,  
-                        #     ball_recovery_player1,   
-                        #     dribbled_past_player1,  foul_won_player1
-                        # ]
 
                         def get_plot_piza(params, values, player, df):
                             df = pd.DataFrame({'Parâmetros': params, 'Valores': values})
@@ -1406,11 +1338,6 @@ def run():
                             )
                             return fig
 
-                        # plot
-                        # st.pyplot(fig)
-                        # max_df1 = df_player1['Valores'].max()
-                        # max_df2 = df_player2['Valores'].max()
-                        # max_value = max(max_df1, max_df2)
                         try:
                             fig1 = get_plot_piza(params_player1, values_player1, player1,df_player1_pizza)
                             col13[0].pyplot(fig1)
@@ -1424,10 +1351,7 @@ def run():
                         except:
                             st.warning("Nenhum dado disponível para plotagem referente ao jogador 2")
                         
-                # plt.show()
             try:
-                # st.write(df_player1_pizza)
-                # st.write(df_player2_pizza)
                 # Renomeando as colunas de valores para identificar os jogadores
                 df_player1_pizza.rename(columns={'Valores': 'Player1'}, inplace=True)
                 df_player2_pizza.rename(columns={'Valores': 'Player2'}, inplace=True)
@@ -1446,17 +1370,7 @@ def run():
                 params_final = df_comparacao['Parâmetros'].tolist()
                 values_player1 = df_comparacao['Player1'].tolist()
                 values_player2 = df_comparacao['Player2'].tolist()
-                # Plotar o gráfico de comparação
-                # df_player1_pizza = df_player1_pizza[df_player1_pizza['Valores'] > 0]
-                # df_player2_pizza = df_player2_pizza[df_player2_pizza['Valores'] > 0]
-                # param1 = df_player1_pizza['Parâmetros'].tolist()
-                # values1 = df_player1_pizza['Valores'].tolist()
-                # param2 = df_player2_pizza['Parâmetros'].tolist()
-                # values2 = df_player2_pizza['Valores'].tolist()
-                # # st.write(df_player1_pizza)
-                # # st.write(df_player2_pizza)
-                # params_final = param1 + param2
-                # params_final = list(set(params_final))
+
                 fig_comparison = plot_pizza_comparison(
                     params=params_final,
                     values_player1=values_player1,
@@ -1476,44 +1390,9 @@ def run():
                 st.write(e)
                 st.warning("Nenhum dado disponível para plotagem. Tente com outros jogadores.")
             
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            # # Kylian Mbappé Lottin - 3009
-            # # Lionel Andrés Messi Cuccittini - 5503
-            
-            # col1, col2 = st.columns(2)
-            # with col1:
-            #     st.write("Kylian Mbappé Lottin")
-            #     #st.image("https://media.api-sports.io/football/players/3009.png", width=100)
-            #     # busca todos jogadores: https://media.api-sports.io/football/players/
-            #     fig_1 = plot_passes(final_data, "Kylian Mbappé Lottin")
-            #     st.pyplot(fig_1)
-            # with col2:
-            #     st.write("Lionel Andrés Messi Cuccittini")
-            #     #st.image("https://media.api-sports.io/football/players/5503.png", width=100)
-            #     fig_2 = plot_passes(final_data, "Lionel Andrés Messi Cuccittini")
-            #     st.pyplot(fig_2)
+
 
 def plot_pizza_comparison(params, values_player1, values_player2, player1, player2, font_normal, font_italic, font_bold, player1_team, player2_team):
-    
-      
     
     values = values_player1 + values_player2
     min_values = [min(values)] * len(params)
@@ -1611,12 +1490,7 @@ def plot_pizza_comparison(params, values_player1, values_player2, player1, playe
         ha="right"
     )
     
-    # Ajustar textos sobrepostos (opcional)
-    # Define quais parâmetros terão offset (True) ou não (False)
-    # Você pode personalizar esta lista conforme necessário
     params_offset = [False] * len(params)  # Exemplo: nenhum ajuste
-    # Exemplo com alguns ajustes
-    # params_offset = [False, True, False, True, ...]
     
     baker.adjust_texts(params_offset, offset=-0.17, adj_comp_values=True)
     
@@ -1698,7 +1572,6 @@ def percent(value, total):
     else:
         return round((value / total) * 100,2)
 
-    #st.write(sb.matches(competition_id=43, season_id=season_id))
 @st.cache_data
 def lineups_metrics(lineups, visao, home_lineup, away_lineup):
     if "Casa" in visao:

@@ -38,6 +38,7 @@ def run():
     ### Explore e Analise!
 
     Utilize as opções interativas para explorar os dados das Copas do Mundo e descubra tendências, padrões e informações valiosas que podem transformar a forma como você entende o futebol.
+    
 
-    **Divirta-se explorando os dados! ⚽📊**
+    **Neymar sofreu muita falta mesmo? Divirta-se explorando os dados! ⚽📊**
     """)
