@@ -1,13 +1,288 @@
-import streamlit as st
-from statsbombpy import sb
-import pandas as pd
-from datetime import datetime
-from app.Scripts.text_functions import mkd_text_divider, mkd_text, mkd_paragraph
-import flagpy as fp
-from mplsoccer import Pitch,Sbopen
+# Bibliotecas Padrão
 import time
+from datetime import datetime
+from urllib.request import urlopen
+
+# Bibliotecas Externas
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+from PIL import Image
+
+# StatsBomb API
+from statsbombpy import sb
+
+# Bibliotecas de Visualização - MPL Soccer
+from mplsoccer import (
+    Pitch,
+    Sbopen,
+    Radar,
+    FontManager,
+    grid,
+    VerticalPitch,
+    inset_image,
+    PyPizza,
+    add_image
+)
+
+# Plotly para visualizações interativas
+import plotly.graph_objects as go
+
+# Biblioteca para bandeiras de países
+import flagpy as fp
+
+# Funções customizadas de texto
+from app.Scripts.text_functions import mkd_text_divider, mkd_text, mkd_paragraph
 
 parser = Sbopen()
+
+
+@st.cache_data
+def plot_fouls_suffered_top10(match_data, visao='Geral', home_team='', away_team=''):
+    """
+    Plota um gráfico de barras horizontal mostrando os top 10 jogadores que sofreram mais faltas.
+    
+    Args:
+        match_data (pd.DataFrame): DataFrame contendo os dados da partida.
+        visao (str): Visão da análise ('Geral', 'Casa', 'Visitante').
+        home_team (str): Nome do time da casa.
+        away_team (str): Nome do time visitante.
+    
+    Returns:
+        plotly.graph_objects.Figure: Figura Plotly contendo o gráfico.
+    """
+    # Definir os nomes das colunas relevantes
+    type_col = 'type_name'
+    team_col = 'team_name'
+    player_col = 'player_name'
+    pass_recipient_col = 'pass_recipient_name'
+    outcome_col = 'outcome_name'
+    minute_col = 'minute'
+    second_col = 'second'
+    index_col = 'index'
+
+    # Filtrar com base na visão
+    if visao == "Casa":
+        teams = [home_team]
+    elif visao == "Visitante":
+        teams = [away_team]
+    else:
+        teams = [home_team, away_team] if home_team and away_team else match_data[team_col].unique().tolist()
+
+    # Filtrar eventos apenas das equipes de interesse
+    match_data = match_data[match_data[team_col].isin(teams)].copy()
+
+    # Ordenar os eventos em ordem cronológica
+    match_data.sort_values(by=[minute_col, second_col, index_col], inplace=True)
+
+    # Resetar o índice
+    match_data.reset_index(drop=True, inplace=True)
+
+    # Inicializar a coluna 'fouled_player' com NaN
+    match_data['fouled_player'] = pd.NA
+
+    # Variável para rastrear o jogador em posse da bola
+    current_possession_player = pd.NA
+
+    # Iterar sobre os eventos para identificar quem está em posse da bola
+    for idx, row in match_data.iterrows():
+        event_type = row[type_col]
+        player = row[player_col]
+        
+        if event_type in ['Pass', 'Ball Receipt', 'Carry', 'Clearance', 'Interception', 'Dribble']:
+            # Atualizar o jogador em posse da bola
+            current_possession_player = row[player_col]
+        elif event_type == 'Foul Committed':
+            # Atribuir o jogador que sofreu a falta como o jogador em posse da bola antes da falta
+            match_data.at[idx, 'fouled_player'] = current_possession_player
+            # Após a falta, a posse pode mudar ou ser interrompida; resetar
+            current_possession_player = pd.NA
+        elif event_type in ['Shot', 'Goal Keeper', 'Block', 'Goal']:
+            # Eventos que podem interromper a posse de bola
+            current_possession_player = pd.NA
+        # Adicione outras condições se necessário
+
+    # Filtrar apenas os eventos onde 'fouled_player' foi identificado
+    df_fouls_suffered = match_data.dropna(subset=['fouled_player']).copy()
+
+    # Contar as faltas sofridas por cada jogador
+    fouls_suffered_counts = df_fouls_suffered['fouled_player'].value_counts().reset_index()
+    fouls_suffered_counts.columns = ['Jogador', 'Faltas_Sofridas']
+
+    # Selecionar os Top 10 jogadores
+    top10_fouls = fouls_suffered_counts.head(10)
+
+    # Verificar se há dados para plotar
+    if top10_fouls.empty:
+        st.warning("Nenhum dado de faltas sofridas encontrado para as equipes selecionadas.")
+        return None
+
+    # Criar o gráfico de barras horizontal com Plotly
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        y=top10_fouls['Jogador'][::-1],  # Inverter para que o Top 1 apareça no topo
+        x=top10_fouls['Faltas_Sofridas'][::-1],
+        orientation='h',
+        marker=dict(color='orange'),
+        text=top10_fouls['Faltas_Sofridas'][::-1],
+        textposition='auto'
+    ))
+
+    # Atualizar layout
+    fig.update_layout(
+        title=f"Top 10 Jogadores com Mais Faltas Sofridas - {visao}",
+        xaxis_title="Número de Faltas Sofridas",
+        yaxis_title="Jogador",
+        template="plotly_white",
+        plot_bgcolor='rgba(0,0,0,0)',
+        height=600
+    )
+
+    # Ajustar a aparência das legendas e rótulos
+    fig.update_layout(
+        font=dict(
+            family="Arial",
+            size=12,
+            color="Black"
+        )
+    )
+
+    return fig
+
+@st.cache_data
+def plot_passes_vs_goals(match_data, visao='Geral', home_team='', away_team=''):
+    """
+    Plota um gráfico de barras agrupadas mostrando o número de passes e gols por equipe em uma partida usando Plotly Objects.
+
+    Args:
+        match_data (pd.DataFrame): DataFrame contendo os dados da partida com colunas 'type_name', 'team_name', etc.
+        visao (str): Visão da análise ('Geral', 'Casa', 'Visitante').
+        home_team (str): Nome do time da casa.
+        away_team (str): Nome do time visitante.
+
+    Returns:
+        plotly.graph_objects.Figure: Figura Plotly contendo o gráfico.
+    """
+    # Verificar e exibir nomes das colunas para depuração
+
+    # Definir os nomes das colunas relevantes
+    type_col = 'type_name'
+    team_col = 'team_name'
+    outcome_col = 'outcome_name'
+
+    # Verificar se as colunas existem
+    if type_col not in match_data.columns or team_col not in match_data.columns:
+        st.error(f"As colunas '{type_col}' e/ou '{team_col}' não existem no DataFrame.")
+        return None
+
+    # Filtrar dados com base na visão
+    if visao == "Casa":
+        teams = [home_team]
+    elif visao == "Visitante":
+        teams = [away_team]
+    else:
+        teams = [home_team, away_team] if home_team and away_team else match_data[team_col].unique().tolist()
+
+    # Limpar e normalizar os dados
+    match_data[type_col] = match_data[type_col].astype(str).str.strip().str.title()
+    match_data[team_col] = match_data[team_col].astype(str).str.strip()
+
+    # Filtrar eventos de Pass e Shot
+    df_filtered = match_data[
+        match_data[type_col].isin(['Pass', 'Shot']) &
+        match_data[team_col].isin(teams)
+    ].copy()
+
+    # Traduzir nomes de eventos se necessário
+    translation_dict = {'Pass': 'Passe', 'Shot': 'Chute'}
+    df_filtered[type_col] = df_filtered[type_col].replace(translation_dict)
+
+
+    # Contar Passes por equipe
+    pass_counts = df_filtered[df_filtered[type_col] == 'Passe'].groupby(team_col).size().reset_index(name='Passes')
+
+    # Contar Gols por equipe (Shot com outcome_name = Goal)
+    if outcome_col in match_data.columns:
+        # Filtrar eventos de Shot com outcome_name igual a Goal
+        gol_filter = (match_data[type_col].str.strip().str.lower() == 'shot') & (match_data[outcome_col].str.strip().str.lower() == 'goal')
+        df_gols = match_data[gol_filter].copy()
+        # Traduzir 'Shot' para 'Gol'
+        df_gols[type_col] = 'Gol'
+        goal_counts = df_gols.groupby(team_col).size().reset_index(name='Gols')
+    else:
+        st.warning(f"A coluna '{outcome_col}' não existe no DataFrame. Nenhum gol será contabilizado.")
+        goal_counts = pd.DataFrame(columns=[team_col, 'Gols'])
+
+    # Unir contagens de Passes e Gols
+    df_counts = pd.merge(pass_counts, goal_counts, on=team_col, how='outer').fillna(0)
+
+    # Garantir que os valores sejam inteiros
+    df_counts['Passes'] = df_counts['Passes'].astype(int)
+    df_counts['Gols'] = df_counts['Gols'].astype(int)
+
+    # Ordenar as equipes conforme a lista de teams
+    df_counts[team_col] = pd.Categorical(df_counts[team_col], categories=teams, ordered=True)
+    df_counts = df_counts.sort_values(team_col)
+
+
+    # Verificar se há gols a serem plotados
+    if df_counts['Gols'].sum() == 0:
+        st.warning("Nenhum gol encontrado na filtragem. Verifique os dados e a tradução.")
+
+    # Iniciar a figura
+    fig = go.Figure()
+
+    # Adicionar barras para Passes
+    fig.add_trace(go.Bar(
+        x=df_counts[team_col],
+        y=df_counts['Passes'],
+        name='Passes',
+        marker_color='blue',
+        text=df_counts['Passes'],
+        textposition='auto'
+    ))
+
+    # Adicionar barras para Gols
+    fig.add_trace(go.Bar(
+        x=df_counts[team_col],
+        y=df_counts['Gols'],
+        name='Gols',
+        marker_color='red',
+        text=df_counts['Gols'],
+        textposition='auto'
+    ))
+
+    # Atualizar layout para barras agrupadas
+    fig.update_layout(
+        barmode='group',
+        title={
+            'text': f"Relação entre Número de Passes e Gols por Equipe - {visao}",
+            'y':0.95,
+            'x':0.5,
+            'xanchor': 'center',
+            'yanchor': 'top'},
+        xaxis_title="Equipe",
+        yaxis_title="Quantidade",
+        legend_title="Métrica",
+        template="plotly_white",
+        plot_bgcolor='rgba(0,0,0,0)'
+    )
+
+    # Atualizar eixo y para iniciar em zero
+    max_y = max(df_counts['Passes'].max(), df_counts['Gols'].max())
+    fig.update_yaxes(range=[0, max_y * 1.2])
+
+    # Ajustar a aparência das legendas e rótulos
+    fig.update_layout(
+        font=dict(
+            family="Arial",
+            size=12,
+            color="Black"
+        )
+    )
+
+    return fig
 
 
 def carregar_dados():
@@ -19,13 +294,8 @@ def carregar_dados():
     status_text = st.empty()
     time.sleep(tempo_carregamento)
 
-    # Passo 1: Carregar Competitions
-    
-
-    # Passo 2: Selecionar Competição
     selected_competition = st.selectbox('Selecione a Competição', competitions_df['competition_name'].unique())
 
-    # Passo 3: Selecionar Temporada
     selected_season = st.selectbox('Selecione a Temporada', competitions_df['season_name'].unique())
 
     # Obter competition_id e season_id baseados na seleção
@@ -36,23 +306,91 @@ def carregar_dados():
     selected_competition_id = selected_row['competition_id'].values[0]
     selected_season_id = selected_row['season_id'].values[0]
 
-    # Passo 4: Carregar Matches
-    
-
-    # Passo 5: Selecionar Partida
     selected_match = st.selectbox('Selecione a Partida', matches_df['match_date'].unique())
     selected_match_id = matches_df[matches_df['match_date'] == selected_match]['match_id'].values[0]
-
-    # Passo 6: Carregar Eventos
-    
-
-    # Limpar a Barra de Progresso
-    
-    
 
 
 def match_data(match_id):
     return parser.event(match_id=match_id)[0]
+
+@st.cache_data
+def plot_passes_without_filter_player(match_data, event_type='Pass', arrows=True, heat_map=False, visao='Geral', home_team='', away_team=''):
+    # Filtrar os dados para o tipo de evento e equipe especificada
+    if visao == "Casa":
+        team_name = home_team
+    elif visao == "Visitante":
+        team_name = away_team
+    else:
+        team_name = ''
+    
+    if team_name:
+        teams_filter = (match_data['type_name'] == event_type) & (match_data['team_name'] == team_name)
+    else:
+        teams_filter = match_data['type_name'] == event_type
+        
+    df_events = match_data.loc[teams_filter, ['x', 'y', 'end_x', 'end_y']].copy()
+    
+    # Substituir strings vazias por NaN
+    df_events[['end_x', 'end_y']] = df_events[['end_x', 'end_y']].replace('', pd.NA)
+    
+    # Converter para float (se necessário)
+    df_events[['x', 'y', 'end_x', 'end_y']] = df_events[['x', 'y', 'end_x', 'end_y']].astype(float)
+    
+    # Soma dos valores da linha 0
+    try:
+        soma_linha_zero = df_events.iloc[0].sum()
+    except:
+        soma_linha_zero = 0
+    
+    # Separar eventos com e sem end_x/end_y
+    df_valid = df_events.dropna(subset=['end_x', 'end_y'])
+    df_invalid = df_events[df_events['end_x'].isna() | df_events['end_y'].isna()]
+    
+    # Configurar o campo
+    pitch = Pitch(pitch_type='statsbomb', pitch_color='#aabb97', line_color='white',
+                  stripe_color='#c2d59d', stripe=False)  # Ajuste conforme necessário
+    
+    fig, ax = pitch.draw(figsize=(10, 7))
+    
+    # Traduzir o tipo de evento para a legenda
+    event_type_translated = translate_event(event_type)
+    
+    # Título do Gráfico
+    titulo = f"{event_type_translated} - {visao}"
+    if team_name:
+        titulo += f" - {team_name}"
+    ax.set_title(titulo, fontsize=20, fontweight='bold', pad=20)
+    
+    
+    # Plotar setas para eventos válidos
+    if arrows and not df_valid.empty:
+        pitch.arrows(df_valid['x'], df_valid['y'], df_valid['end_x'], df_valid['end_y'], 
+                    width=2, color='blue', alpha=0.6, ax=ax, label=f'{event_type_translated}')
+    
+    # Plotar pontos para eventos inválidos
+    if not df_invalid.empty:
+        scatter = pitch.scatter(df_invalid['x'], df_invalid['y'], s=100, color='red', edgecolors='black', 
+                                alpha=0.7, ax=ax, label='Passes Inválidos')
+    
+    # Adicionar mapa de calor se solicitado
+    if heat_map and not df_valid.empty:
+        try:
+            pitch.kdeplot(df_valid['x'], df_valid['y'], ax=ax, alpha=0.5, shade=True, cmap='coolwarm', label='Mapa de Calor')
+        except Exception as e:
+            st.write("Não foi possível plotar o mapa de calor:", e)
+    
+    # Adicionar legenda
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(handles, labels, loc='upper right', fontsize=12)
+    
+    # Adicionar informações de total de eventos
+    total_valid = len(df_valid)
+    total_invalid = len(df_invalid)
+    info_text = f"Total de {event_type_translated}: {total_valid}"
+    plt.gcf().text(0.02, 0.95, info_text, fontsize=12, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.5))
+    
+    return fig, soma_linha_zero
 
 def plot_passes(match_data, player_name, event_type='Pass'):
     # Filtrar os dados para o tipo de evento e jogador especificado
@@ -129,26 +467,42 @@ def year_filter(df):
 
 def translate_event(event_type):
     event_translation = {
-    'Pass': 'Passe ',
-    'Ball Receipt*': 'Recepção de Bola',
-    'Carry': 'Condução de Bola',
-    'Pressure': 'Pressão (Marcação)',
-    'Foul Committed': 'Falta Cometida',
-    'Duel': 'Duelo (Disputa)',
-    'Block': 'Bloqueio',
-    'Ball Recovery': 'Recuperação de Bola',
-    'Miscontrol': 'Controle Errado',
-    'Dribbled Past': 'Driblado',
-    
-    'Shot': 'Chute a Gol',
-    'Substitution': 'Substituição',
-    'Clearance': 'Alívio (Desarme)',
-    'Foul Won': 'Falta Sofrida',
-    'Injury Stoppage': 'Parada por Lesão',
-    'Interception': 'Interceptação ',
-    'Dribble': 'Drible',
-}
-
+        '50/50': '50/50',
+        'Bad Behaviour': 'Comportamento Antidesportivo',
+        'Ball Receipt*': 'Bola Recebida',
+        'Ball Recovery': 'Bola Recuperada ',
+        'Block': 'Bloqueio',
+        'Camera off: Deprecated': 'Câmera Desligada (Depreciado)',
+        'Camera On: Deprecated': 'Câmera Ligada (Depreciado)',
+        'Carry': 'Condução de Bola',
+        'Clearance': 'Desarme',
+        'Dispossessed': 'Perdeu a Bola',
+        'Dribble': 'Drible',
+        'Dribbled Past': 'Driblado pelo Adversário',
+        'Duel': 'Duelo',
+        'Error': 'Erro',
+        'Foul Committed': 'Falta Cometida',
+        'Foul Won': 'Falta Sofrida',
+        'Goal Keeper': 'Goleiro',
+        'Half End': 'Fim do Tempo',
+        'Half Start': 'Início do Tempo',
+        'Injury Stoppage': 'Parada por Lesão',
+        'Interception': 'Interceptação',
+        'Miscontrol': 'Perda de Controle',
+        'Offside': 'Impedimento',
+        'Own Goal Against': 'Gol Contra',
+        'Own Goal For': 'Gol Para',
+        'Pass': 'Passe',
+        'Player Off': 'Jogador Saiu',
+        'Player On': 'Jogador Entrou',
+        'Pressure': 'Pressão',
+        'Referee Ball-Drop': 'Bola Caída',
+        'Shield': 'Proteção de Bola',
+        'Shot': 'Chute ao Gol',
+        'Starting XI': 'Escalação Inicial',
+        'Substitution': 'Substituição',
+        'Tactical Shift': 'Mudança Tática'
+    }
     return event_translation.get(event_type, event_type)
 
 def filter_events(events, todos=True):
@@ -263,10 +617,6 @@ def filter_vision(visao, match_id, home_team, away_team):
     elif visao == "Geral":
         pass
     return events
-
-
-
-
 
 def restart_session_state(nivel):
     if nivel == "event_type":
@@ -495,7 +845,7 @@ def run():
     # ========================== Escalação ==========================
     st.header("Informações e Detalhes")
     st.write("")
-    tab1, tab2, tab3, tab4 = st.tabs(["Estatísticas da Partida", "Detalhes da Partida", "Escalação", "Detalhes do Jogador"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Estatísticas da Partida", "Escalação", "Detalhes do Jogador", "Comparação de Jogadores", "Outros Detalhes"])
     
     mkd_text("", level='subheader')
     home_lineup = sb.lineups(match_id=match_id)[home_team].sort_values('jersey_number')
@@ -508,7 +858,7 @@ def run():
     home_managers = df_match['home_managers'].values[0]
     away_managers = df_match['away_managers'].values[0]
     
-    with tab1:
+    with tab3: # ["Casa", "Visitante"]
         with st.container(border=True):
             col7 = st.columns([1,1,1])
             with col7[1]:
@@ -571,19 +921,16 @@ def run():
                     st.subheader(f"Mapa: {event_type}")
                     st.pyplot(fig)
             st.subheader(f"Detalhamento do evento de {event_type}")
-            #st.dataframe(events.columns)
+
             events_to_show = events.reset_index(drop=True)
             events_to_show.index = events_to_show.index + 1
             st.dataframe(events_to_show)
             
-            parser = Sbopen()
             def match_data_2(match_id):
                 return parser.event(match_id=match_id)[0]
-            #st.dataframe(match_data_2(match_id).columns)
-            #st.dataframe(match_data_2(match_id))
         
     
-    with tab3:
+    with tab2: # st.subheader("Técnicos")
         with st.container(border=True):
             st.subheader("Técnicos")
             col3 = st.columns([1,1])
@@ -595,7 +942,6 @@ def run():
                 st.markdown(f"<h5 >{away_managers}</h5>", unsafe_allow_html=True)    
             st.divider()
             st.subheader("Jogadores")
-            #with st.expander("👥 Jogadores",expanded=True):
             col3 = st.columns([1,1])
             with col3[0]:
                 st.markdown(f"<h3 style='color: green'>{home_team} (Casa)</h3>", unsafe_allow_html=True)
@@ -607,7 +953,6 @@ def run():
                         
                         # Exibir o resultado no Streamlit
                         st.write(df_home)
-                st.dataframe(home_lineup)
             with col3[1]:
                 st.markdown(f"<h3 style='color: red'>{away_team} (Visitante)</h3>", unsafe_allow_html=True)
                 with st.container(border=True):
@@ -618,11 +963,9 @@ def run():
                         
                         # Exibir o resultado no Streamlit
                         st.write(df_away)
-                st.dataframe(away_lineup)
-    with tab2:
+    with tab5: # st.subheader("Detalhes da Partida")
         with st.container(border=True):
         # ========================== Detalhes da Partida ==========================
-            #with st.expander("🏟️👔 Partida e Técnicos:", expanded=True):
             st.subheader("Detalhes da Partida")
             st.write(f"**Estádio:** {match['stadium']}")
             # match_week
@@ -631,10 +974,16 @@ def run():
             st.write(f"**Fase:** {match['competition_stage']}")
             
             
-    with tab4:
+    with tab1: # st.subheader("Métricas")
         with st.container(border=True):
             
+            col_team = st.columns([1,1])
+            with col_team[0]:
+                st.markdown(f"<h3 style='color: green'>{home_team} (Casa)</h3>", unsafe_allow_html=True)
+            with col_team[1]:
+                st.markdown(f"<h3 style='color: red'>{away_team} (Visitante)</h3>", unsafe_allow_html=True)
             st.subheader("Métricas")
+            
             col5 = st.columns([1, 1,1])
             with col5[1]:
                 visao = st.radio("", [f"Casa","Geral", "Visitante"], horizontal=True, index=1)
@@ -645,7 +994,7 @@ def run():
             col4 = st.columns([1, 1, 1, 1,1,1])
             with col4[0]:
                 st.metric("Passes", events['type'].value_counts().get('Pass', 0))
-                st.metric("Cartão Amarelo", yellow_cards)
+                # st.metric("Cartão Amarelo", yellow_cards)
             with col4[4]:
                 shots = events['type'].value_counts().get('Shot', 0)
                 st.metric("Chutes a Gol", shots)
@@ -660,7 +1009,7 @@ def run():
                 st.metric("Conversão(Gols)", f'{percent_score}%')
             with col4[1]:
                 st.metric("Faltas", events['type'].value_counts().get('Foul Committed', 0))
-                st.metric("Cartão Vermelho", red_cards)
+                # st.metric("Cartão Vermelho", red_cards)
             with col4[2]:
                 st.metric("Dribles", events['type'].value_counts().get('Dribble', 0))
             with col4[3]:  # Add an additional column for corner kicks
@@ -668,27 +1017,533 @@ def run():
                 corner_shots = events[(events['type'] == 'Shot') & (events['play_pattern'] == 'From Corner')]
                 corner = len(corner_passes) + len(corner_shots)
                 st.metric("Escanteios", corner)
-
-
             
+            final_data = match_data(match_id)
+            
+            col11 = st.columns([1,1,1])
+            with col11[1]:
+                st.divider()
+            col11 = st.columns([1.3,1,1])
+            with col11[1]:
+                plot_heat_arraw_map = st.checkbox("Mostrar Gráficos", value=False, key='pass_chart')
+                
+            if plot_heat_arraw_map:
+                load_time_plot = 0.01
+                # Interface aprimorada com barra de progresso e status para os dois eventos
+                col9 = st.columns([1, 1])
 
+                # ---- Seção para o evento de tipo 'Pass' ----
+                with col9[0]:
+                    with st.spinner('Processando. Por favor, aguarde...'):
+                        # Barra de progresso e status
+                        progress_bar_col9 = st.progress(0)
+                        status_text_col9 = st.empty()
+
+                        time.sleep(load_time_plot)  # Simulação de um pequeno tempo de processamento
+                        progress_bar_col9.progress(20)
+                        status_text_col9.text("Inicializando...")
+
+                        # Configuração de opções para o gráfico de Pass
+                        event_type = 'Pass'
+                        event_type_translated = translate_event(event_type)
+                        with st.container(border=True):
+                            st.subheader(f"Mapa: {event_type_translated}")
+                            
+                            col10 = st.columns([1, 1])
+                            with col10[0]:
+                                arrows = st.checkbox("Mostrar Setas", value=False, key='arrows1')
+                            with col10[1]:
+                                heat_map = st.checkbox("Mostrar Mapa de Calor", value=True, key='heat_map1')
+
+                            # Atualizando progresso após a escolha das opções
+                            time.sleep(load_time_plot)  # Simulação de tempo para configuração
+                            progress_bar_col9.progress(40)
+                            status_text_col9.text("Configurando opções...")
+
+                            # Plotagem do gráfico de Pass
+                            fig, soma_linha_zero = plot_passes_without_filter_player(final_data, event_type, arrows=arrows, heat_map=heat_map, visao=visao, home_team=home_team, away_team=away_team)
+
+                            # Atualizando progresso após a plotagem
+                            progress_bar_col9.progress(80)
+                            status_text_col9.text("Gerando gráfico...")
+
+                            # Exibir o gráfico se houver dados
+                            if soma_linha_zero != 0:
+                                st.pyplot(fig)
+                                progress_bar_col9.progress(100)
+                                status_text_col9.text("Plotagem concluída!")
+                            else:
+                                st.warning("Nenhum dado disponível para plotagem.")
+
+                            # Limpar a barra de progresso e a mensagem de status após um breve tempo
+                            time.sleep(load_time_plot)
+                            progress_bar_col9.empty()
+                            status_text_col9.empty()
+
+                # ---- Seção para o evento de tipo 'Shot' ----
+                with col9[1]:
+                    with st.spinner('Processando. Por favor, aguarde...'):
+                        # Barra de progresso e status
+                        progress_bar_col9_shot = st.progress(0)
+                        status_text_col9_shot = st.empty()
+
+                        time.sleep(load_time_plot)  # Simulação de um pequeno tempo de processamento
+                        progress_bar_col9_shot.progress(20)
+                        status_text_col9_shot.text("Inicializando...")
+
+                        # Configuração de opções para o gráfico de Shot
+                        event_type = 'Shot'
+                        event_type_translated = translate_event(event_type)
+                        with st.container(border=True):
+                            
+                            st.subheader(f"Mapa: {event_type_translated}")
+                            
+                            col10_shot = st.columns([1, 1])
+                            with col10_shot[0]:
+                                arrows = st.checkbox("Mostrar Setas", value=True, key='arrows2')
+                            with col10_shot[1]:
+                                heat_map = st.checkbox("Mostrar Mapa de Calor", value=False, key='heat_map2')
+
+                            # Atualizando progresso após a escolha das opções
+                            time.sleep(load_time_plot)  # Simulação de tempo para configuração
+                            progress_bar_col9_shot.progress(40)
+                            status_text_col9_shot.text("Configurando opções...")
+
+                            # Plotagem do gráfico de Shot
+                            fig, soma_linha_zero = plot_passes_without_filter_player(final_data, event_type, arrows=arrows, heat_map=heat_map, visao=visao, home_team=home_team, away_team=away_team)
+
+                            # Atualizando progresso após a plotagem
+                            progress_bar_col9_shot.progress(80)
+                            status_text_col9_shot.text("Gerando gráfico...")
+
+                            # Exibir o gráfico se houver dados
+                            if soma_linha_zero != 0:
+                                st.pyplot(fig)
+                                progress_bar_col9_shot.progress(100)
+                                status_text_col9_shot.text("Plotagem concluída!")
+                            else:
+                                st.warning("Nenhum dado disponível para plotagem.")
+
+                            # Limpar a barra de progresso e a mensagem de status após um breve tempo
+                            time.sleep(load_time_plot)
+                            progress_bar_col9_shot.empty()
+                            status_text_col9_shot.empty()
+                fig_passes_goals = plot_passes_vs_goals(final_data, visao=visao, home_team=home_team, away_team=away_team)
+                st.plotly_chart(fig_passes_goals, use_container_width=True)
+                
+                # Plotagem dos Top 10 Jogadores com Mais Faltas Sofridas
+                st.subheader("Top 10 Jogadores com Mais Faltas Sofridas")
+                fig_top10_fouls = plot_fouls_suffered_top10(
+                    match_data=final_data,
+                    visao=visao,
+                    home_team=home_team,
+                    away_team=away_team
+                )
+                if fig_top10_fouls:
+                    st.plotly_chart(fig_top10_fouls, use_container_width=True)
+                
             # Filtrando apenas as colunas que estão disponíveis nos eventos
             events_filtered = events[event_columns].copy()
 
             # Exibindo o DataFrame no Streamlit
             st.write("")
-            st.subheader("Eventos da Partida")
-            col6 = st.columns([1, 1, 1])
-            with col6[0]:
-                events_filtered, event_type = filter_events(events_filtered, todos=False)
-            with col6[1]:
-                players_filtered, player = filter_players(events_filtered, todos=False)
+            with st.expander("📝📥 Relação de Eventos da Partida", expanded=False):
+                st.subheader("Eventos da Partida")
+                col6 = st.columns([1, 1])
+                with col6[0]:
+                    events_filtered, event_type = filter_events(events_filtered, todos=True)
+                with col6[1]:
+                    players_filtered, player = filter_players(events_filtered, todos=True)
+                st.dataframe(players_filtered, hide_index = True)
+                download_df(players_filtered)
+
+    with tab4: # st.subheader("Comparação de Jogadores")
+        with st.container(border=True):
+            st.subheader("Comparação de Jogadores")
+            col12 = st.columns([1,1,2,2,1,1])
+            with col12[2]:
+                players_id = lineups['player_id'].unique()
+                players = [lineups.loc[lineups['player_id'] == player_id, 'player_name'].values[0] for player_id in players_id]
+                player1 = st.selectbox("Selecione o primeiro jogador:", players, key='player1')
+                player1_id = lineups.loc[lineups['player_name'] == player1, 'player_id'].values[0]
+                try:
+                    player1_team = events[events['player_id'] == player1_id]['team'].values[0]
+                except:
+                    player1_team = "Não informado"
                 
+            with col12[3]:
+                players.remove(player1)
+                player2 = st.selectbox("Selecione o segundo jogador:", players, key='player2')
+                palyer2_id = lineups.loc[lineups['player_name'] == player2, 'player_id'].values[0]
+                try:
+                    player2_team = events[events['player_id'] == palyer2_id]['team'].values[0]
+                except:
+                    player2_team = "Não informado"
+            conteiner_filtro_eventos = st.container()
+            with st.expander("📊📈 Comparação de Jogadores", expanded=True):
+                col13 = st.columns([1,1])
             
-            st.dataframe(players_filtered, hide_index = True)
-            download_df(players_filtered)
+            # Função para calcular as ocorrências de eventos para o jogador
+            
+            event_translation = {
+                '50/50': '50/50',
+                'Bad Behaviour': 'Comportamento Antidesportivo',
+                'Ball Receipt*': 'Bola Recebida',
+                'Ball Recovery': 'Bola Recuperada',
+                'Block': 'Bloqueio',
+                'Carry': 'Condução de Bola',
+                'Clearance': 'Desarme',
+                'Dispossessed': 'Perdeu a Bola',
+                'Dribble': 'Drible',
+                'Dribbled Past': 'Driblado pelo Adversário',
+                'Duel': 'Duelo',
+                'Foul Committed': 'Falta Cometida',
+                'Foul Won': 'Falta Sofrida',
+                'Goal Keeper': 'Goleiro',
+                'Half End': 'Fim do Tempo',
+                'Half Start': 'Início do Tempo',
+                'Injury Stoppage': 'Parada por Lesão',
+                'Interception': 'Interceptação',
+                'Miscontrol': 'Perda de Controle',
+                'Pass': 'Passe',
+                'Pressure': 'Pressão',
+                'Shot': 'Chute ao Gol',
+                'Substitution': 'Substituição',
+                'Tactical Shift': 'Mudança Tática'
+            }
+            df_player1 = return_df_events_players(events, player1_id, event_translation)
+            df_player1 = df_player1[df_player1['Valores'] > 0] 
+            
+            df_player2 = return_df_events_players(events, palyer2_id, event_translation)
+            df_player2 = df_player2[df_player2['Valores'] > 0]
+            
+            
+            df_resultado = somar_eventos(df_player1, df_player2)
+            columns_top10 = df_resultado['Parâmetros'].head(10).to_list()
+            
+            # Inverter o dicionário event_translation para ter traduções como chave e inglês como valor
+            inverted_event_translation = {v: k for k, v in event_translation.items()}
+
+            # Lista de eventos em português (columns_top10) que queremos destraduzir
+            columns_top10 = ['Passe', 'Bola Recebida', 'Condução de Bola', 'Pressão', 'Bola Recuperada',
+                            'Falta Cometida', 'Bloqueio', 'Desarme', 'Duelo', 'Falta Sofrida']
+
+            # Destraduzir usando o dicionário invertido
+            events_in_english = [inverted_event_translation[event] for event in columns_top10]
+
+            # Criar um dataframe com os eventos destraduzidos
+            df_top_10_destraduzido = pd.DataFrame({'Parâmetros': events_in_english})
+
+            # Configurar o multiselect corretamente
+            with conteiner_filtro_eventos:
+                    selected_events = st.multiselect(
+                        "Selecione até 12 eventos para incluir no gráfico:",
+                        options=list(event_translation.keys()),  # Use as chaves em inglês
+                        format_func=lambda x: event_translation[x],  # Traduzir para exibição
+                        max_selections=12,  # Limite de 12 seleções
+                        key='selected_events',  # Chave para armazenar a seleção
+                        default=df_top_10_destraduzido  # Use as chaves em inglês como padrão
+                    )
+                    
+
+                    if selected_events:
+                        def plot_pizza(player_id):
+                            # Lista de parâmetros e valores correspondentes
+                            params = []
+                            values = []
+
+                            for event in selected_events:
+                                # Traduzir o evento
+                                translated_event = event_translation[event]
+                                # Calcular o número de vezes que o evento ocorreu para o jogador
+                                event_count = calculate_event_counts(player_id, event,events)
+                                # Adicionar à lista de parâmetros e valores
+                                params.append(translated_event)
+                                values.append(event_count)
+                                df = pd.DataFrame({'Parâmetros': params, 'Valores': values})
+                            return params, values, df
+                        params_player1, values_player1, df_player1_pizza = plot_pizza(player1_id)
+                        params_player2, values_player2, df_player2_pizza = plot_pizza(palyer2_id)
+
+                        font_normal = FontManager('https://raw.githubusercontent.com/googlefonts/roboto/main/'
+                                                'src/hinted/Roboto-Regular.ttf')
+                        font_italic = FontManager('https://raw.githubusercontent.com/googlefonts/roboto/main/'
+                                                'src/hinted/Roboto-Italic.ttf')
+                        font_bold = FontManager('https://raw.githubusercontent.com/google/fonts/main/apache/robotoslab/'
+                                                'RobotoSlab[wght].ttf')
+                        
+
+                        def get_plot_piza(params, values, player, df):
+                            df = pd.DataFrame({'Parâmetros': params, 'Valores': values})
+                            df = df[df['Valores'] > 0]
+                            params = df['Parâmetros'].tolist()
+                            values = df['Valores'].tolist()
+                            # st.write(df)
+                            count_values = len(values)
+                            # st.write(count_values)
+                            min_df = df['Valores'].min()
+                            list_values_min = [min_df] * count_values
+                            
+                            max_df = df['Valores'].max()
+                            list_values_max = [max_df] * count_values
+                            # instantiate PyPizza class
+                            baker = PyPizza(
+                                params=params,                  # list of parameters
+                                straight_line_color="#000000",  # color for straight lines
+                                straight_line_lw=1,             # linewidth for straight lines
+                                last_circle_lw=1,               # linewidth of last circle
+                                other_circle_lw=1,              # linewidth for other circles
+                                other_circle_ls="-.",            # linestyle for other circles
+                                min_range=list_values_min,                    # valor mínimo
+                                max_range=list_values_max         # valor máximo do gráfico
+                            )
+
+                            # plot pizza
+                            fig, ax = baker.make_pizza(
+                                values,              # list of values
+                                figsize=(8, 8),      # adjust figsize according to your need
+                                param_location=110,  # where the parameters will be added
+                                kwargs_slices=dict(
+                                    facecolor="cornflowerblue", edgecolor="#000000",
+                                    zorder=2, linewidth=1
+                                ),                   # values to be used when plotting slices
+                                kwargs_params=dict(
+                                    color="#000000", fontsize=12,
+                                    fontproperties=font_normal.prop, va="center"
+                                ),                   # values to be used when adding parameter
+                                kwargs_values=dict(
+                                    color="#000000", fontsize=12,
+                                    fontproperties=font_normal.prop, zorder=3,
+                                    bbox=dict(
+                                        edgecolor="#000000", facecolor="cornflowerblue",
+                                        boxstyle="round,pad=0.2", lw=1
+                                    )
+                                )                    # values to be used when adding parameter-values
+                            )
+
+                            # add title
+                            fig.text(
+                                0.515, 0.97, f"{player} - ()", size=18,
+                                ha="center", fontproperties=font_bold.prop, color="#000000"
+                            )
+
+                            # add credits
+                            CREDIT_1 = "data: statsbomb viz fbref"
+                            CREDIT_2 = "inspired by: @Worville, @FootballSlices, @somazerofc & @Soumyaj15209314"
+
+                            fig.text(
+                                0.99, 0.005, f"{CREDIT_1}\n{CREDIT_2}", size=9,
+                                fontproperties=font_italic.prop, color="#000000",
+                                ha="right"
+                            )
+                            return fig
+
+                        try:
+                            fig1 = get_plot_piza(params_player1, values_player1, player1,df_player1_pizza)
+                            col13[0].pyplot(fig1)
+                            col13[0].dataframe(df_player1, use_container_width=True)
+                        except:
+                            st.warning("Nenhum dado disponível para plotagem referente ao jogador 1")
+                        try:
+                            fig2 = get_plot_piza(params_player2, values_player2, player2, df_player2_pizza)
+                            col13[1].pyplot(fig2)
+                            col13[1].dataframe(df_player2, use_container_width=True)
+                        except:
+                            st.warning("Nenhum dado disponível para plotagem referente ao jogador 2")
+                        
+            try:
+                # Renomeando as colunas de valores para identificar os jogadores
+                df_player1_pizza.rename(columns={'Valores': 'Player1'}, inplace=True)
+                df_player2_pizza.rename(columns={'Valores': 'Player2'}, inplace=True)
+
+                # Merge dos dois DataFrames usando 'Evento' como chave
+                df_comparacao = pd.merge(df_player1_pizza, df_player2_pizza, on='Parâmetros', how='outer')
+
+                # Substituindo valores NaN por 0
+                df_comparacao.fillna(0, inplace=True)
+
+                # Convertendo para inteiros para evitar casas decimais
+                df_comparacao[['Player1', 'Player2']] = df_comparacao[['Player1', 'Player2']].astype(int)
+                df_comparacao = df_comparacao.sort_values(by='Player1', ascending=False)
+                df_comparacao = df_comparacao[(df_comparacao['Player1'] > 0) | (df_comparacao['Player2'] > 0)]
+                # st.write(df_comparacao)
+                params_final = df_comparacao['Parâmetros'].tolist()
+                values_player1 = df_comparacao['Player1'].tolist()
+                values_player2 = df_comparacao['Player2'].tolist()
+
+                fig_comparison = plot_pizza_comparison(
+                    params=params_final,
+                    values_player1=values_player1,
+                    values_player2=values_player2,
+                    player1=player1,
+                    player2=player2,
+                    font_normal=font_normal,
+                    font_italic=font_italic,
+                    font_bold=font_bold,
+                    player1_team=player1_team,
+                    player2_team=player2_team
+                )
+                
+                # Exibir o gráfico no Streamlit
+                st.pyplot(fig_comparison)
+            except Exception as e:
+                st.write(e)
+                st.warning("Nenhum dado disponível para plotagem. Tente com outros jogadores.")
+            
 
 
+def plot_pizza_comparison(params, values_player1, values_player2, player1, player2, font_normal, font_italic, font_bold, player1_team, player2_team):
+    
+    values = values_player1 + values_player2
+    min_values = [min(values)] * len(params)
+    max_values = [max(values)] * len(params)
+    
+    # st.write(len(params), len(values_player1), len(values_player2))
+    length = len(params)
+    while len(values_player1) < length:
+        values_player1.append(0)
+    while len(values_player2) < length:
+        values_player2.append(0)
+    """
+    Plota um gráfico de comparação sobreposto para dois jogadores usando PyPizza.
+    
+    Args:
+        params (list): Lista de parâmetros/eventos.
+        values_player1 (list): Valores para o primeiro jogador.
+        values_player2 (list): Valores para o segundo jogador.
+        player1 (str): Nome do primeiro jogador.
+        player2 (str): Nome do segundo jogador.
+        font_normal, font_italic, font_bold: Fontes para estilização.
+    
+    Returns:
+        matplotlib.figure.Figure: Figura do gráfico gerado.
+    """
+    # Instanciar a classe PyPizza
+    
+                            
+    baker = PyPizza(
+        params=params,                  # lista de parâmetros
+        background_color="#EBEBE9",     # cor de fundo
+        straight_line_color="#222222",  # cor das linhas retas
+        straight_line_lw=1,             # largura das linhas retas
+        last_circle_lw=1,               # largura da última circunferência
+        last_circle_color="#222222",    # cor da última circunferência
+        other_circle_ls="-.",           # estilo da linha das outras circunferências
+        other_circle_lw=1,                # largura das outras circunferências
+        min_range=min_values,                    # valor mínimo
+        max_range=max_values  
+    )
+    
+    # Plotar o gráfico de pizza
+    fig, ax = baker.make_pizza(
+        values_player1,                     # lista de valores do jogador 1
+        compare_values=values_player2,      # lista de valores do jogador 2
+        figsize=(10, 10),                   # tamanho da figura
+        param_location=110,                 # localização dos parâmetros
+        kwargs_slices=dict(
+            facecolor="#1A78CF", edgecolor="#222222",
+            zorder=2, linewidth=1
+        ),                                  # estilo das fatias do jogador 1
+        kwargs_compare=dict(
+            facecolor="#FF9300", edgecolor="#222222",
+            zorder=2, linewidth=1,
+        ),                                  # estilo das fatias do jogador 2
+        kwargs_params=dict(
+            color="#000000", fontsize=12,
+            fontproperties=font_normal.prop, va="center"
+        ),                                  # estilo dos parâmetros
+        kwargs_values=dict(
+            color="#000000", fontsize=12,
+            fontproperties=font_normal.prop, zorder=3,
+            bbox=dict(
+                edgecolor="#000000", facecolor="cornflowerblue",
+                boxstyle="round,pad=0.2", lw=1
+            )
+        ),                                  # estilo dos valores do jogador 1
+        kwargs_compare_values=dict(
+            color="#000000", fontsize=12, fontproperties=font_normal.prop, zorder=3,
+            bbox=dict(edgecolor="#000000", facecolor="#FF9300", boxstyle="round,pad=0.2", lw=1)
+        ),                                  # estilo dos valores do jogador 2
+    )
+    
+    
+    fig.text(
+        0.515, 0.97, f"{player1} vs {player2}", size=18,
+        ha="center", fontproperties=font_bold.prop, color="#000000"
+    )
+    # Adicionar subtítulo
+    # add subtitle
+    fig.text(
+        0.515, 0.942,
+        f"{player1_team} vs {player2_team}",
+        size=15,
+        ha="center", fontproperties=font_bold.prop, color="#000000"
+    )
+    
+    # Adicionar créditos
+    CREDIT_1 = "data: statsbomb viz fbref"
+    CREDIT_2 = "inspired by: @Worville, @FootballSlices, @somazerofc & @Soumyaj15209314"
+    
+    fig.text(
+        0.99, 0.005, f"{CREDIT_1}\n{CREDIT_2}", size=9,
+        fontproperties=font_italic.prop, color="#000000",
+        ha="right"
+    )
+    
+    params_offset = [False] * len(params)  # Exemplo: nenhum ajuste
+    
+    baker.adjust_texts(params_offset, offset=-0.17, adj_comp_values=True)
+    
+    return fig
+
+
+def somar_eventos(df_player1, df_player2):
+    """
+    Função para somar os eventos de dois dataframes, combinando as linhas com base na coluna 'Parâmetros'.
+    
+    Args:
+    df_player1 (pd.DataFrame): DataFrame do primeiro jogador.
+    df_player2 (pd.DataFrame): DataFrame do segundo jogador.
+
+    Returns:
+    pd.DataFrame: DataFrame resultante com os valores somados, ordenado pela soma dos eventos ('Total').
+    """
+    # Fazendo merge dos dois dataframes com base na coluna 'Parâmetros'
+    df_total = pd.merge(df_player1, df_player2, on='Parâmetros', how='outer', suffixes=('_player1', '_player2'))
+    
+    # Substituindo valores NaN por 0 para somar corretamente
+    df_total.fillna(0, inplace=True)
+
+    # Selecionando apenas colunas numéricas para realizar a soma
+    colunas_numericas = df_total.columns.difference(['Parâmetros'])
+    
+    # Somando as colunas numéricas de player1 e player2
+    df_total['Total'] = df_total[colunas_numericas].sum(axis=1)
+
+    # Retornando apenas a coluna 'Parâmetros' e 'Total', ordenado pelo total
+    df_total = df_total[['Parâmetros', 'Total']].sort_values(by='Total', ascending=False)
+
+    return df_total
+
+
+def calculate_event_counts(player_id, event_type,events):
+            return events[(events['player_id'] == player_id) & (events['type'] == event_type)].shape[0]
+
+def return_df_events_players(events, player_id, event_translation):
+    params = []
+    values = []
+
+    for event in list(event_translation.keys()):
+        # Traduzir o evento
+        translated_event = event_translation[event]
+        # Calcular o número de vezes que o evento ocorreu para o jogador
+        event_count = calculate_event_counts(player_id, event,events)
+        # Adicionar à lista de parâmetros e valores
+        params.append(translated_event)
+        values.append(event_count)
+    df = pd.DataFrame({'Parâmetros': params, 'Valores': values}).sort_values(by='Valores', ascending=False).reset_index(drop=True)
+    
+    return df
 
 def translate_position(position):
     # Dicionário para mapear posições de futebol em inglês para português
@@ -717,7 +1572,6 @@ def percent(value, total):
     else:
         return round((value / total) * 100,2)
 
-    #st.write(sb.matches(competition_id=43, season_id=season_id))
 @st.cache_data
 def lineups_metrics(lineups, visao, home_lineup, away_lineup):
     if "Casa" in visao:

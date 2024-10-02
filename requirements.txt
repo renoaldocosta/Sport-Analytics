@@ -7,3 +7,4 @@ mplsoccer
 matplotlib
 plotly
 flagpy
+imageio

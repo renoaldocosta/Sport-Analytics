@@ -5,12 +5,12 @@ import sys
 import importlib  # Serve para importar módulos dinamicamente
 
 Project_name = "Sport Analytics"
-
 st.set_page_config(
-    page_title=Project_name,
-    # page_icon="./app/assets/image/favicon_64_64.png",  # Atualize o caminho se necessário
-    layout="wide"  # Define o layout como 'wide' por padrão
-)
+        page_title="Dashboard de Análise das Copas do Mundo",
+        page_icon="⚽",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
 
 # Atualiza o caminho da pasta de páginas para 'pages'
 pages_dir = os.path.join('app', 'pages')
@@ -21,9 +21,9 @@ def load_css():
     css = """
         <style>
         /* Ocultar o menu principal do Streamlit */
-        #MainMenu {visibility: hidden;} 
+        /*#MainMenu {visibility: hidden;} 
         /* Ocultar o cabeçalho inteiro */
-        header {visibility: hidden;} 
+        /*header {visibility: hidden;} 
         
         /* Define a cor de fundo da sidebar */
         .css-1d391kg {background-color: #f0f2f6;}  /* secondaryBackgroundColor */
