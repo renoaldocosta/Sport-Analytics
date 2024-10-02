@@ -8,9 +8,6 @@ def sidebar():
     pages = {
         "Introdução": "introducao",
         "Copas do Mundo": "copas",
-        "Conhecendo os Dados": "dados",
-        "Dicionário de Dados": "dicionario",
-        
     }
 
     # Lista de ícones apropriados para cada página
@@ -24,7 +21,7 @@ def sidebar():
 
     with st.sidebar:
         selected_page = option_menu(
-            "Sport Analytics",         # Título do menu
+            "World Cup Analytics",         # Título do menu
             list(pages.keys()),       # Nomes de exibição das páginas
             icons=icons,              # Lista de ícones definidos acima
             menu_icon="bi-trophy",    # Ícone do menu principal

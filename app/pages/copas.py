@@ -13,6 +13,8 @@ from mplsoccer import VerticalPitch, Sbopen, FontManager, inset_image
 from PIL import Image
 from urllib.request import urlopen
 from mplsoccer import PyPizza, add_image, FontManager
+
+
 parser = Sbopen()
 
 
@@ -859,7 +861,7 @@ def run():
     # ========================== Escalação ==========================
     st.header("Informações e Detalhes")
     st.write("")
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Estatísticas da Partida", "Detalhes da Partida", "Escalação", "Detalhes do Jogador", "Comparação de Jogadores"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Estatísticas da Partida", "Escalação", "Detalhes do Jogador", "Comparação de Jogadores", "Outros Detalhes"])
     
     mkd_text("", level='subheader')
     home_lineup = sb.lineups(match_id=match_id)[home_team].sort_values('jersey_number')
@@ -872,7 +874,7 @@ def run():
     home_managers = df_match['home_managers'].values[0]
     away_managers = df_match['away_managers'].values[0]
     
-    with tab4:
+    with tab3: # ["Casa", "Visitante"]
         with st.container(border=True):
             col7 = st.columns([1,1,1])
             with col7[1]:
@@ -946,7 +948,7 @@ def run():
             #st.dataframe(match_data_2(match_id))
         
     
-    with tab3:
+    with tab2: # st.subheader("Técnicos")
         with st.container(border=True):
             st.subheader("Técnicos")
             col3 = st.columns([1,1])
@@ -982,7 +984,7 @@ def run():
                         # Exibir o resultado no Streamlit
                         st.write(df_away)
                 #st.dataframe(away_lineup)
-    with tab2:
+    with tab5: # st.subheader("Detalhes da Partida")
         with st.container(border=True):
         # ========================== Detalhes da Partida ==========================
             #with st.expander("🏟️👔 Partida e Técnicos:", expanded=True):
@@ -994,7 +996,7 @@ def run():
             st.write(f"**Fase:** {match['competition_stage']}")
             
             
-    with tab5:
+    with tab1: # st.subheader("Métricas")
         with st.container(border=True):
             
             st.subheader("Métricas")
@@ -1008,7 +1010,7 @@ def run():
             col4 = st.columns([1, 1, 1, 1,1,1])
             with col4[0]:
                 st.metric("Passes", events['type'].value_counts().get('Pass', 0))
-                st.metric("Cartão Amarelo", yellow_cards)
+                # st.metric("Cartão Amarelo", yellow_cards)
             with col4[4]:
                 shots = events['type'].value_counts().get('Shot', 0)
                 st.metric("Chutes a Gol", shots)
@@ -1023,7 +1025,7 @@ def run():
                 st.metric("Conversão(Gols)", f'{percent_score}%')
             with col4[1]:
                 st.metric("Faltas", events['type'].value_counts().get('Foul Committed', 0))
-                st.metric("Cartão Vermelho", red_cards)
+                # st.metric("Cartão Vermelho", red_cards)
             with col4[2]:
                 st.metric("Dribles", events['type'].value_counts().get('Dribble', 0))
             with col4[3]:  # Add an additional column for corner kicks
@@ -1177,7 +1179,7 @@ def run():
                 st.dataframe(players_filtered, hide_index = True)
                 download_df(players_filtered)
 
-    with tab1:
+    with tab4: # st.subheader("Comparação de Jogadores")
         with st.container(border=True):
             st.subheader("Comparação de Jogadores")
             col12 = st.columns([1,1,2,2,1,1])
@@ -1186,7 +1188,10 @@ def run():
                 players = [lineups.loc[lineups['player_id'] == player_id, 'player_name'].values[0] for player_id in players_id]
                 player1 = st.selectbox("Selecione o primeiro jogador:", players, key='player1')
                 player1_id = lineups.loc[lineups['player_name'] == player1, 'player_id'].values[0]
-                player1_team = events[events['player_id'] == player1_id]['team'].values[0]
+                try:
+                    player1_team = events[events['player_id'] == player1_id]['team'].values[0]
+                except:
+                    player1_team = "Não informado"
                 
                 # Exibir todos os eventos do jogador em um dataframe ordenado
                 # try:
@@ -1198,9 +1203,12 @@ def run():
                 players.remove(player1)
                 player2 = st.selectbox("Selecione o segundo jogador:", players, key='player2')
                 palyer2_id = lineups.loc[lineups['player_name'] == player2, 'player_id'].values[0]
-                player2_team = events[events['player_id'] == palyer2_id]['team'].values[0]
+                try:
+                    player2_team = events[events['player_id'] == palyer2_id]['team'].values[0]
+                except:
+                    player2_team = "Não informado"
             conteiner_filtro_eventos = st.container()
-            with st.expander("📊📈 Comparação de Jogadores", expanded=False):
+            with st.expander("📊📈 Comparação de Jogadores", expanded=True):
                 col13 = st.columns([1,1])
             # st.subheader(f"{player1} Vs. {player2}")
             

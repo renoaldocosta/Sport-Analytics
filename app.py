@@ -5,12 +5,12 @@ import sys
 import importlib  # Serve para importar módulos dinamicamente
 
 Project_name = "Sport Analytics"
-
 st.set_page_config(
-    page_title=Project_name,
-    # page_icon="./app/assets/image/favicon_64_64.png",  # Atualize o caminho se necessário
-    layout="wide"  # Define o layout como 'wide' por padrão
-)
+        page_title="Dashboard de Análise das Copas do Mundo",
+        page_icon="⚽",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
 
 # Atualiza o caminho da pasta de páginas para 'pages'
 pages_dir = os.path.join('app', 'pages')
