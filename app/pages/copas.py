@@ -7,7 +7,12 @@ import flagpy as fp
 from mplsoccer import Pitch,Sbopen
 import time
 import plotly.graph_objects as go
-
+from mplsoccer import Radar, FontManager, grid
+import matplotlib.pyplot as plt
+from mplsoccer import VerticalPitch, Sbopen, FontManager, inset_image
+from PIL import Image
+from urllib.request import urlopen
+from mplsoccer import PyPizza, add_image, FontManager
 parser = Sbopen()
 
 
@@ -854,7 +859,7 @@ def run():
     # ========================== Escalação ==========================
     st.header("Informações e Detalhes")
     st.write("")
-    tab1, tab2, tab3, tab4 = st.tabs(["Estatísticas da Partida", "Detalhes da Partida", "Escalação", "Detalhes do Jogador"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Estatísticas da Partida", "Detalhes da Partida", "Escalação", "Detalhes do Jogador", "Comparação de Jogadores"])
     
     mkd_text("", level='subheader')
     home_lineup = sb.lineups(match_id=match_id)[home_team].sort_values('jersey_number')
@@ -935,7 +940,6 @@ def run():
             events_to_show.index = events_to_show.index + 1
             st.dataframe(events_to_show)
             
-            parser = Sbopen()
             def match_data_2(match_id):
                 return parser.event(match_id=match_id)[0]
             #st.dataframe(match_data_2(match_id).columns)
@@ -990,7 +994,7 @@ def run():
             st.write(f"**Fase:** {match['competition_stage']}")
             
             
-    with tab1:
+    with tab5:
         with st.container(border=True):
             
             st.subheader("Métricas")
@@ -1173,7 +1177,292 @@ def run():
                 st.dataframe(players_filtered, hide_index = True)
                 download_df(players_filtered)
 
+    with tab1:
+        with st.container(border=True):
+            st.subheader("Comparação de Jogadores")
+            col12 = st.columns([1,1,2,2,1,1])
+            with col12[2]:
+                players_id = lineups['player_id'].unique()
+                players = [lineups.loc[lineups['player_id'] == player_id, 'player_name'].values[0] for player_id in players_id]
+                player1 = st.selectbox("Selecione o primeiro jogador:", players, key='player1')
+                player1_id = lineups.loc[lineups['player_name'] == player1, 'player_id'].values[0]
+                # Exibir todos os eventos do jogador em um dataframe ordenado
+                # try:
+                #     st.write(events[events['player_id'] == player1_id])
+                # except:
+                #     pass
+                # st.write(events['type'].value_counts())
+            with col12[3]:
+                players.remove(player1)
+                player2 = st.selectbox("Selecione o segundo jogador:", players, key='player2')
+                palyer2_id = lineups.loc[lineups['player_name'] == player2, 'player_id'].values[0]
+            col13 = st.columns([1,1])
+            # st.subheader(f"{player1} Vs. {player2}")
+            
+            # st.write(season_id, match_id)
+            # fifa_world_cup22 = sb.matches(competition_id=43, season_id=season_id)
+            # final_match_id = match_id #fifa_world_cup22[(fifa_world_cup22['home_team'] == "Argentina") & (fifa_world_cup22['away_team'] == "France")].match_id.values[0]
+            # final_data = match_data(final_match_id)
+            # st.write(player1, player1_id)
+            # st.write(player2, palyer2_id)
+            # line_ups = sb.lineups(match_id=final_match_id)
+            # st.write(lineups)
+            
+            # Função para calcular as ocorrências de eventos para o jogador
+            
+            event_translation = {
+                '50/50': '50/50',
+                'Bad Behaviour': 'Comportamento Antidesportivo',
+                'Ball Receipt*': 'Bola Recebida',
+                'Ball Recovery': 'Bola Recuperada',
+                'Block': 'Bloqueio',
+                'Carry': 'Condução de Bola',
+                'Clearance': 'Desarme',
+                'Dispossessed': 'Perdeu a Bola',
+                'Dribble': 'Drible',
+                'Dribbled Past': 'Driblado pelo Adversário',
+                'Duel': 'Duelo',
+                'Foul Committed': 'Falta Cometida',
+                'Foul Won': 'Falta Sofrida',
+                'Goal Keeper': 'Goleiro',
+                'Half End': 'Fim do Tempo',
+                'Half Start': 'Início do Tempo',
+                'Injury Stoppage': 'Parada por Lesão',
+                'Interception': 'Interceptação',
+                'Miscontrol': 'Perda de Controle',
+                'Pass': 'Passe',
+                'Pressure': 'Pressão',
+                'Shot': 'Chute ao Gol',
+                'Substitution': 'Substituição',
+                'Tactical Shift': 'Mudança Tática'
+            }
+            df_player1 = return_df_events_players(events, player1_id, event_translation)
+            df_player1 = df_player1[df_player1['Valores'] > 0] 
+            df_player2 = return_df_events_players(events, palyer2_id, event_translation)
+            df_player2 = df_player2[df_player2['Valores'] > 0]
+            df_resultado = somar_eventos(df_player1, df_player2)
+            # st.write('df_resultado',df_resultado)
+            #Supondo que df_resultado já está definido e contém uma coluna 'Parâmetros'
+            columns_top10 = df_resultado['Parâmetros'].head(10).to_list()
+            # st.write('columns_top10',type(columns_top10))
+            
+            
+            # Inverter o dicionário event_translation para ter traduções como chave e inglês como valor
+            inverted_event_translation = {v: k for k, v in event_translation.items()}
 
+            # Lista de eventos em português (columns_top10) que queremos destraduzir
+            columns_top10 = ['Passe', 'Bola Recebida', 'Condução de Bola', 'Pressão', 'Bola Recuperada',
+                            'Falta Cometida', 'Bloqueio', 'Desarme', 'Duelo', 'Falta Sofrida']
+
+            # Destraduzir usando o dicionário invertido
+            events_in_english = [inverted_event_translation[event] for event in columns_top10]
+
+            # Criar um dataframe com os eventos destraduzidos
+            df_top_10_destraduzido = pd.DataFrame({'Parâmetros': events_in_english})
+
+            # Exibir o resultado
+            # st.write(df_top_10_destraduzido)
+            # Filtrar eventos que têm tradução
+            # columns_top10 = [event for event in columns_top10 if event in event_translation]
+            # st.write('columns_top10',columns_top10)
+            # Traduzir para exibição (opcional)
+            # translated_events_top_10 = [event_translation[event] for event in columns_top10]
+
+            # st.write("Eventos Selecionados para o Gráfico de Pizza:", translated_events_top_10)
+
+            # Configurar o multiselect corretamente
+            selected_events = st.multiselect(
+                "Selecione até 12 eventos para incluir no gráfico:",
+                options=list(event_translation.keys()),  # Use as chaves em inglês
+                format_func=lambda x: event_translation[x],  # Traduzir para exibição
+                max_selections=12,  # Limite de 12 seleções
+                key='selected_events',  # Chave para armazenar a seleção
+                default=df_top_10_destraduzido  # Use as chaves em inglês como padrão
+            )
+            
+            
+            
+            
+            
+            #df_player1 = pd.DataFrame({'Parâmetros': params, 'Valores': values}).sort_values(by='Valores', ascending=False)
+            #df_player2 = pd.DataFrame({'Parâmetros': params, 'Valores': values}).sort_values(by='Valores', ascending=False)
+            col13[0].dataframe(df_player1, use_container_width=True)
+            col13[1].dataframe(df_player2, use_container_width=True)
+            #st.dataframe(df_resultado, use_container_width=True)
+                    # Validar a seleção e calcular os valores
+            if selected_events:
+                # Lista de parâmetros e valores correspondentes
+                params = []
+                values = []
+
+                for event in selected_events:
+                    # Traduzir o evento
+                    translated_event = event_translation[event]
+                    # Calcular o número de vezes que o evento ocorreu para o jogador
+                    event_count = calculate_event_counts(player1_id, event,events)
+                    # Adicionar à lista de parâmetros e valores
+                    params.append(translated_event)
+                    values.append(event_count)
+                df_player1 = pd.DataFrame({'Parâmetros': params, 'Valores': values})
+                # col13[0].dataframe(df_player1)
+                # Exibir os parâmetros e valores selecionados
+                # st.write("Parâmetros Selecionados:", params)
+                # st.write("Valores Correspondentes:", values)
+                font_normal = FontManager('https://raw.githubusercontent.com/googlefonts/roboto/main/'
+                                        'src/hinted/Roboto-Regular.ttf')
+                font_italic = FontManager('https://raw.githubusercontent.com/googlefonts/roboto/main/'
+                                        'src/hinted/Roboto-Italic.ttf')
+                font_bold = FontManager('https://raw.githubusercontent.com/google/fonts/main/apache/robotoslab/'
+                                        'RobotoSlab[wght].ttf')
+                
+                # params = [
+                #     "Pass", "Shot", "Dribble", "Ball Receipt*",  
+                #      "Ball Recovery",  
+                #     "Dribbled Past", "Foul Won"
+                # ]
+
+                # # Criação da lista de valores, com base nas contagens acima
+                # values = [
+                #     passes_player1, shot_player1, dribble_player1, ball_receipt_player1,  
+                #     ball_recovery_player1,   
+                #     dribbled_past_player1,  foul_won_player1
+                # ]
+
+                # instantiate PyPizza class
+                baker = PyPizza(
+                    params=params,                  # list of parameters
+                    straight_line_color="#000000",  # color for straight lines
+                    straight_line_lw=1,             # linewidth for straight lines
+                    last_circle_lw=1,               # linewidth of last circle
+                    other_circle_lw=1,              # linewidth for other circles
+                    other_circle_ls="-."            # linestyle for other circles
+                )
+
+                # plot pizza
+                fig, ax = baker.make_pizza(
+                    values,              # list of values
+                    figsize=(8, 8),      # adjust figsize according to your need
+                    param_location=110,  # where the parameters will be added
+                    kwargs_slices=dict(
+                        facecolor="cornflowerblue", edgecolor="#000000",
+                        zorder=2, linewidth=1
+                    ),                   # values to be used when plotting slices
+                    kwargs_params=dict(
+                        color="#000000", fontsize=12,
+                        fontproperties=font_normal.prop, va="center"
+                    ),                   # values to be used when adding parameter
+                    kwargs_values=dict(
+                        color="#000000", fontsize=12,
+                        fontproperties=font_normal.prop, zorder=3,
+                        bbox=dict(
+                            edgecolor="#000000", facecolor="cornflowerblue",
+                            boxstyle="round,pad=0.2", lw=1
+                        )
+                    )                    # values to be used when adding parameter-values
+                )
+
+                # add title
+                fig.text(
+                    0.515, 0.97, f"{player1} - FC Bayern Munich", size=18,
+                    ha="center", fontproperties=font_bold.prop, color="#000000"
+                )
+
+                # add credits
+                CREDIT_1 = "data: statsbomb viz fbref"
+                CREDIT_2 = "inspired by: @Worville, @FootballSlices, @somazerofc & @Soumyaj15209314"
+
+                fig.text(
+                    0.99, 0.005, f"{CREDIT_1}\n{CREDIT_2}", size=9,
+                    fontproperties=font_italic.prop, color="#000000",
+                    ha="right"
+                )
+
+                # plot
+                st.pyplot(fig)
+                # plt.show()
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            # # Kylian Mbappé Lottin - 3009
+            # # Lionel Andrés Messi Cuccittini - 5503
+            
+            # col1, col2 = st.columns(2)
+            # with col1:
+            #     st.write("Kylian Mbappé Lottin")
+            #     #st.image("https://media.api-sports.io/football/players/3009.png", width=100)
+            #     # busca todos jogadores: https://media.api-sports.io/football/players/
+            #     fig_1 = plot_passes(final_data, "Kylian Mbappé Lottin")
+            #     st.pyplot(fig_1)
+            # with col2:
+            #     st.write("Lionel Andrés Messi Cuccittini")
+            #     #st.image("https://media.api-sports.io/football/players/5503.png", width=100)
+            #     fig_2 = plot_passes(final_data, "Lionel Andrés Messi Cuccittini")
+            #     st.pyplot(fig_2)
+
+def somar_eventos(df_player1, df_player2):
+    """
+    Função para somar os eventos de dois dataframes, combinando as linhas com base na coluna 'Parâmetros'.
+    
+    Args:
+    df_player1 (pd.DataFrame): DataFrame do primeiro jogador.
+    df_player2 (pd.DataFrame): DataFrame do segundo jogador.
+
+    Returns:
+    pd.DataFrame: DataFrame resultante com os valores somados, ordenado pela soma dos eventos ('Total').
+    """
+    # Fazendo merge dos dois dataframes com base na coluna 'Parâmetros'
+    df_total = pd.merge(df_player1, df_player2, on='Parâmetros', how='outer', suffixes=('_player1', '_player2'))
+    
+    # Substituindo valores NaN por 0 para somar corretamente
+    df_total.fillna(0, inplace=True)
+
+    # Selecionando apenas colunas numéricas para realizar a soma
+    colunas_numericas = df_total.columns.difference(['Parâmetros'])
+    
+    # Somando as colunas numéricas de player1 e player2
+    df_total['Total'] = df_total[colunas_numericas].sum(axis=1)
+
+    # Retornando apenas a coluna 'Parâmetros' e 'Total', ordenado pelo total
+    df_total = df_total[['Parâmetros', 'Total']].sort_values(by='Total', ascending=False)
+
+    return df_total
+
+
+def calculate_event_counts(player_id, event_type,events):
+            return events[(events['player_id'] == player_id) & (events['type'] == event_type)].shape[0]
+
+def return_df_events_players(events, player_id, event_translation):
+    params = []
+    values = []
+
+    for event in list(event_translation.keys()):
+        # Traduzir o evento
+        translated_event = event_translation[event]
+        # Calcular o número de vezes que o evento ocorreu para o jogador
+        event_count = calculate_event_counts(player_id, event,events)
+        # Adicionar à lista de parâmetros e valores
+        params.append(translated_event)
+        values.append(event_count)
+    df = pd.DataFrame({'Parâmetros': params, 'Valores': values}).sort_values(by='Valores', ascending=False).reset_index(drop=True)
+    
+    return df
 
 def translate_position(position):
     # Dicionário para mapear posições de futebol em inglês para português
