@@ -9,7 +9,6 @@ def run():
 
     # Seção de Introdução
     st.markdown("""
-    ## Bem-vindo ao Dashboard de Análise das Copas do Mundo!
 
     Este aplicativo foi desenvolvido para proporcionar uma análise detalhada e interativa das partidas das Copas do Mundo de Futebol. Utilizando dados reais obtidos através da biblioteca [StatsBombPy](https://github.com/statsbomb/statsbombpy) e visualizações avançadas com [mplsoccer](https://mplsoccer.readthedocs.io/en/latest/), o dashboard oferece uma variedade de informações e insights para técnicos, analistas, gestores e fãs do futebol.
 
@@ -37,8 +36,9 @@ def run():
 
     ### Explore e Analise!
 
-    Utilize as opções interativas para explorar os dados das Copas do Mundo e descubra tendências, padrões e informações valiosas que podem transformar a forma como você entende o futebol.
+    Utilize as opções interativas para explorar os dados das Copas do Mundo e descubra tendências, padrões e informações valiosas que podem transformar a forma como você entende o futebol. Além disso, é possivel descobrir algumas curiosidades, como por exemplo:
     
 
-    **Neymar sofreu muita falta mesmo? Divirta-se explorando os dados! ⚽📊**
     """)
+    st.markdown(f"<h3 style='color: green'>Durante a copa, Neymar realmente sofreu muita falta?</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='color: green'><strong>Divirta-se explorando os dados! ⚽📊</strong></p>", unsafe_allow_html=True)
