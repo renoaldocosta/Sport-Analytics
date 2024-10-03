@@ -38,7 +38,7 @@ def run():
 
     Utilize as opções interativas para explorar os dados das Copas do Mundo e descubra tendências, padrões e informações valiosas que podem transformar a forma como você entende o futebol. Além disso, é possivel descobrir algumas curiosidades, como por exemplo:
     
-
+ 
     """)
     st.markdown(f"<h3 style='color: green'>Durante a copa, Neymar realmente sofreu muita falta?</h3>", unsafe_allow_html=True)
     st.markdown(f"<h3 style='color: green'><strong>Divirta-se explorando os dados! ⚽📊</strong></p>", unsafe_allow_html=True)
